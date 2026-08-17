@@ -1,0 +1,6 @@
+[
+  {
+    "ParameterKey": "LogRetentionDays",
+    "ParameterValue": "90"
+  }
+]

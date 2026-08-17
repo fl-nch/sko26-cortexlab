@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  VPC logging: VPC Flow Logs and Route 53 Resolver DNS query logs are delivered
+  to two separate, hardened S3 buckets so each log type can be shared with an
+  upstream analytics system independently (distinct access, notifications, and
+  lifecycle).
+
+Parameters:
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    Description: Number of days to keep log objects (both buckets) before expiry.
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # VPC Flow Logs bucket
+  # ---------------------------------------------------------------------------
+  FlowLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # ACLs disabled (modern S3 default). The log-delivery service writes
+      # objects without an ACL, so the bucket policy must NOT require one.
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-logs
+            Status: Enabled
+            ExpirationInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: sko26-cortexlab-flow-logs
+        - Key: Project
+          Value: sko26-cortexlab
+
+  FlowLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FlowLogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSLogDeliveryWrite
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${FlowLogBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AWSLogDeliveryAclCheck
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt FlowLogBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  # VPC Flow Logs -> flow-logs bucket (no IAM role needed for S3 destination).
+  VpcFlowLog:
+    Type: AWS::EC2::FlowLog
+    DependsOn: FlowLogBucketPolicy
+    Properties:
+      ResourceId: !ImportValue vpc-id
+      ResourceType: VPC
+      TrafficType: ALL
+      LogDestinationType: s3
+      LogDestination: !GetAtt FlowLogBucket.Arn
+      Tags:
+        - Key: Name
+          Value: sko26-cortexlab-vpc-flow-log
+        - Key: Project
+          Value: sko26-cortexlab
+
+  # ---------------------------------------------------------------------------
+  # Route 53 Resolver DNS query logs bucket
+  # ---------------------------------------------------------------------------
+  DnsLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-logs
+            Status: Enabled
+            ExpirationInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: sko26-cortexlab-dns-logs
+        - Key: Project
+          Value: sko26-cortexlab
+
+  DnsLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DnsLogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSLogDeliveryWrite
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${DnsLogBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AWSLogDeliveryAclCheck
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt DnsLogBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  # Route 53 Resolver DNS query logging -> dns-logs bucket.
+  DnsQueryLogConfig:
+    Type: AWS::Route53Resolver::ResolverQueryLoggingConfig
+    DependsOn: DnsLogBucketPolicy
+    Properties:
+      Name: sko26-cortexlab-dns
+      DestinationArn: !GetAtt DnsLogBucket.Arn
+      Tags:
+        - Key: Project
+          Value: sko26-cortexlab
+
+  DnsQueryLogAssociation:
+    Type: AWS::Route53Resolver::ResolverQueryLoggingConfigAssociation
+    Properties:
+      ResolverQueryLogConfigId: !Ref DnsQueryLogConfig
+      ResourceId: !ImportValue vpc-id
+
+Outputs:
+  FlowLogBucketName:
+    Description: VPC Flow Logs bucket name.
+    Value: !Ref FlowLogBucket
+    Export:
+      Name: flow-log-bucket-name
+  FlowLogBucketArn:
+    Description: VPC Flow Logs bucket ARN.
+    Value: !GetAtt FlowLogBucket.Arn
+    Export:
+      Name: flow-log-bucket-arn
+  DnsLogBucketName:
+    Description: DNS query logs bucket name.
+    Value: !Ref DnsLogBucket
+    Export:
+      Name: dns-log-bucket-name
+  DnsLogBucketArn:
+    Description: DNS query logs bucket ARN.
+    Value: !GetAtt DnsLogBucket.Arn
+    Export:
+      Name: dns-log-bucket-arn

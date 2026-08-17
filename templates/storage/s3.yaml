@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  S3 bucket used as a file-transfer relay for the lab VMs: push files from
+  your workstation with "aws s3 cp", pull them on the instance inside the SSM
+  session (and vice versa). Keyless, no inbound SSH.
+
+Resources:
+  TransferBucket:
+    Type: AWS::S3::Bucket
+    # Name is auto-generated to avoid global-namespace collisions;
+    # the actual name is published as an output/export.
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: sko26-cortexlab-transfer
+        - Key: Project
+          Value: sko26-cortexlab
+
+Outputs:
+  BucketName:
+    Description: Transfer bucket name.
+    Value: !Ref TransferBucket
+    Export:
+      Name: transfer-bucket-name
+  BucketArn:
+    Description: Transfer bucket ARN.
+    Value: !GetAtt TransferBucket.Arn
+    Export:
+      Name: transfer-bucket-arn

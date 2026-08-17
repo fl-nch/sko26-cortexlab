@@ -1,0 +1,2 @@
+# Place cfn-guard (.guard) policy-as-code rules here.
+# See: https://github.com/aws-cloudformation/cloudformation-guard

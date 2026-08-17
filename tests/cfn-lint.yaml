@@ -1,0 +1,10 @@
+# cfn-lint configuration.
+# See: https://github.com/aws-cloudformation/cfn-lint
+templates:
+  - templates/**/*.yaml
+
+regions:
+  - ap-southeast-2
+
+# Add rule IDs here to ignore specific checks project-wide.
+ignore_checks: []

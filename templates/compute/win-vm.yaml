@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  sko26-lab-win-vm: a Windows Server EC2 instance in the same public subnet as
+  sko26-lab-linux-vm, with outbound internet access. Reached via SSM Session Manager
+  (PowerShell session, or a full RDP desktop tunnelled over SSM port forwarding;
+  no keypair, no inbound rules).
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.small
+    Description: EC2 instance type (Windows needs more memory than the Linux VM).
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-windows-latest/Windows_Server-2022-English-Full-Base
+    Description: >
+      Latest Windows Server 2022 Base AMI, resolved from the public SSM
+      parameter. Windows Server AMIs ship with the SSM Agent pre-installed.
+
+Resources:
+  # Role that lets the instance be managed by SSM Session Manager.
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: transfer-bucket-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !ImportValue transfer-bucket-arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub
+                  - "${BucketArn}/*"
+                  - BucketArn: !ImportValue transfer-bucket-arn
+      Tags:
+        - Key: Project
+          Value: sko26-cortexlab
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  # No inbound rules — SSM needs none. Outbound open for internet access
+  # (including the SSM control-channel endpoints).
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: sko26-lab-win-vm outbound-only (SSM managed, no inbound)
+      VpcId: !ImportValue vpc-id
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: sko26-lab-win-vm-sg
+        - Key: Project
+          Value: sko26-cortexlab
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !ImportValue public-subnet-id
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: sko26-lab-win-vm
+        - Key: Project
+          Value: sko26-cortexlab
+
+Outputs:
+  InstanceId:
+    Description: EC2 instance ID.
+    Value: !Ref Instance
+  ConnectCommand:
+    Description: Open a PowerShell session on the instance via SSM Session Manager.
+    Value: !Sub "aws ssm start-session --target ${Instance}"
+  RdpTunnelCommand:
+    Description: >-
+      Forward RDP over SSM (no inbound rule needed). Run this locally, then
+      point an RDP client at localhost:13389. Set a password first from a
+      PowerShell session, e.g. "net user Administrator <NewPassw0rd!>".
+    Value: !Sub >-
+      aws ssm start-session --target ${Instance}
+      --document-name AWS-StartPortForwardingSession
+      --parameters portNumber=3389,localPortNumber=13389
