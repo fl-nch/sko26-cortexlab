@@ -6,6 +6,10 @@ Description: >
   no keypair, no inbound rules).
 
 Parameters:
+  NamePrefix:
+    Type: String
+    Default: sko26-cortexlab
+    Description: Prefix applied to all resource names in this stack.
   InstanceType:
     Type: String
     Default: t3.small
@@ -50,7 +54,7 @@ Resources:
                   - BucketArn: !ImportValue transfer-bucket-arn
       Tags:
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -63,7 +67,7 @@ Resources:
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: sko26-lab-win-vm outbound-only (SSM managed, no inbound)
+      GroupDescription: !Sub "${NamePrefix}-win-vm outbound-only (SSM managed, no inbound)"
       VpcId: !ImportValue vpc-id
       SecurityGroupEgress:
         - IpProtocol: "-1"
@@ -71,9 +75,9 @@ Resources:
           Description: Allow all outbound
       Tags:
         - Key: Name
-          Value: sko26-lab-win-vm-sg
+          Value: !Sub "${NamePrefix}-win-vm-sg"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   Instance:
     Type: AWS::EC2::Instance
@@ -86,9 +90,9 @@ Resources:
         - !Ref InstanceSecurityGroup
       Tags:
         - Key: Name
-          Value: sko26-lab-win-vm
+          Value: !Sub "${NamePrefix}-win-vm"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
 Outputs:
   InstanceId:
@@ -106,3 +110,13 @@ Outputs:
       aws ssm start-session --target ${Instance}
       --document-name AWS-StartPortForwardingSession
       --parameters portNumber=3389,localPortNumber=13389
+  SecurityGroupId:
+    Description: Instance security group ID (consumed by the EKS stack).
+    Value: !Ref InstanceSecurityGroup
+    Export:
+      Name: win-vm-sg-id
+  InstanceRoleArn:
+    Description: Instance IAM role ARN (mapped into EKS as a cluster admin).
+    Value: !GetAtt InstanceRole.Arn
+    Export:
+      Name: win-vm-role-arn

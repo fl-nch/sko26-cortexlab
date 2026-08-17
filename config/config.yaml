@@ -1,11 +1,12 @@
 # Deployment configuration.
-# Consumed by scripts/deploy.sh to resolve region, tags, and stack order.
+# Consumed by the deploy scripts to resolve region, tags, and stack order.
 
 region: ap-southeast-2
-stackPrefix: sko26-cortexlab
+stackPrefix: sko26-grp0-cortexlab
 
+# Project is tagged per-resource inside each template (driven by NamePrefix),
+# so it's intentionally not repeated here.
 tags:
-  Project: sko26-cortexlab
   ManagedBy: cloudformation
 
 # Stacks are deployed in listed order (foundational first).
@@ -17,7 +18,7 @@ stacks:
   - name: logging
     template: templates/network/logging.yaml
     parameters: parameters/logging.json
-  - name: storage
+  - name: transfer-bucket
     template: templates/storage/s3.yaml
     parameters: parameters/s3.json
   - name: linux-vm
@@ -26,3 +27,6 @@ stacks:
   - name: win-vm
     template: templates/compute/win-vm.yaml
     parameters: parameters/win-vm.json
+  - name: eks
+    template: templates/compute/eks.yaml
+    parameters: parameters/eks.json

@@ -6,6 +6,10 @@ Description: >
   lifecycle).
 
 Parameters:
+  NamePrefix:
+    Type: String
+    Default: sko26-cortexlab
+    Description: Prefix applied to all resource names in this stack.
   LogRetentionDays:
     Type: Number
     Default: 90
@@ -39,9 +43,9 @@ Resources:
             ExpirationInDays: !Ref LogRetentionDays
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-flow-logs
+          Value: !Sub "${NamePrefix}-flow-logs"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   FlowLogBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -81,9 +85,9 @@ Resources:
       LogDestination: !GetAtt FlowLogBucket.Arn
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-vpc-flow-log
+          Value: !Sub "${NamePrefix}-vpc-flow-log"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   # ---------------------------------------------------------------------------
   # Route 53 Resolver DNS query logs bucket
@@ -110,9 +114,9 @@ Resources:
             ExpirationInDays: !Ref LogRetentionDays
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-dns-logs
+          Value: !Sub "${NamePrefix}-dns-logs"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   DnsLogBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -145,11 +149,11 @@ Resources:
     Type: AWS::Route53Resolver::ResolverQueryLoggingConfig
     DependsOn: DnsLogBucketPolicy
     Properties:
-      Name: sko26-cortexlab-dns
+      Name: !Sub "${NamePrefix}-dns"
       DestinationArn: !GetAtt DnsLogBucket.Arn
       Tags:
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   DnsQueryLogAssociation:
     Type: AWS::Route53Resolver::ResolverQueryLoggingConfigAssociation

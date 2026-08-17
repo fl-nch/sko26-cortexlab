@@ -4,6 +4,10 @@ Description: >
   that gives instances in the subnet outbound internet access.
 
 Parameters:
+  NamePrefix:
+    Type: String
+    Default: sko26-cortexlab
+    Description: Prefix applied to all resource names in this stack.
   VpcCidr:
     Type: String
     Default: 10.0.0.0/16
@@ -12,6 +16,14 @@ Parameters:
     Type: String
     Default: 10.0.1.0/24
     Description: CIDR block for the public subnet.
+  PrivateSubnetACidr:
+    Type: String
+    Default: 10.0.10.0/24
+    Description: CIDR block for the first private subnet (EKS, AZ a).
+  PrivateSubnetBCidr:
+    Type: String
+    Default: 10.0.11.0/24
+    Description: CIDR block for the second private subnet (EKS, AZ b).
 
 Resources:
   Vpc:
@@ -22,18 +34,18 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-vpc
+          Value: !Sub "${NamePrefix}-vpc"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-igw
+          Value: !Sub "${NamePrefix}-igw"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   VpcGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -50,9 +62,9 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-public-subnet
+          Value: !Sub "${NamePrefix}-public-subnet"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
@@ -60,9 +72,9 @@ Resources:
       VpcId: !Ref Vpc
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-public-rt
+          Value: !Sub "${NamePrefix}-public-rt"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
   PublicRoute:
     Type: AWS::EC2::Route
@@ -78,6 +90,95 @@ Resources:
       SubnetId: !Ref PublicSubnet
       RouteTableId: !Ref PublicRouteTable
 
+  # ---------------------------------------------------------------------------
+  # Private subnets (EKS). Two AZs — the EKS control plane requires subnets in
+  # at least two Availability Zones. No public IPs; egress is via the NAT
+  # gateway so nodes can pull images and reach the EKS/ECR/S3 endpoints.
+  # ---------------------------------------------------------------------------
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-private-subnet-a"
+        - Key: Project
+          Value: !Ref NamePrefix
+        # Lets the EKS/AWS load-balancer controller place internal LBs here.
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-private-subnet-b"
+        - Key: Project
+          Value: !Ref NamePrefix
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+
+  # Single NAT gateway (in the public subnet) shared by both private subnets.
+  # One NAT keeps lab cost down; make it per-AZ for production HA.
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-nat-eip"
+        - Key: Project
+          Value: !Ref NamePrefix
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-nat"
+        - Key: Project
+          Value: !Ref NamePrefix
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-private-rt"
+        - Key: Project
+          Value: !Ref NamePrefix
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
 Outputs:
   VpcId:
     Description: VPC ID for cross-stack imports.
@@ -89,3 +190,13 @@ Outputs:
     Value: !Ref PublicSubnet
     Export:
       Name: public-subnet-id
+  PrivateSubnetAId:
+    Description: First private (EKS) subnet ID for cross-stack imports.
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: private-subnet-a-id
+  PrivateSubnetBId:
+    Description: Second private (EKS) subnet ID for cross-stack imports.
+    Value: !Ref PrivateSubnetB
+    Export:
+      Name: private-subnet-b-id

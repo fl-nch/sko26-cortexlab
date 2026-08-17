@@ -39,16 +39,22 @@ Validate all templates:
 scripts/validate.sh
 ```
 
-Deploy everything:
+Deploy everything except the EKS stack:
 
 ```bash
-scripts/deploy.sh
+scripts/deploy-part1.sh
 ```
 
-Deploy a single stack:
+Then deploy the EKS stack (takes ~15 minutes; needs part 1 in place first):
 
 ```bash
-scripts/deploy.sh vpc
+scripts/deploy-part2.sh
+```
+
+Deploy a single (non-EKS) stack:
+
+```bash
+scripts/deploy-part1.sh vpc
 ```
 
 Tear down:
@@ -63,7 +69,8 @@ scripts/delete.sh
 scripts read it (via `scripts/config.py`) for:
 
 - `region` — target AWS region (override per-run with the `AWS_REGION` env var)
-- `stackPrefix` — prefix for stack names (`<prefix>-<stack>`)
+- `stackPrefix` — prefix for stack names (`<prefix>-<stack>`) and, via the
+  `NamePrefix` template parameter, for resource names and the `Project` tag
 - `tags` — applied to every stack
 - `stacks` — the ordered list of stacks (deploy order; delete runs it in reverse)
 
@@ -73,5 +80,6 @@ scripts read it (via `scripts/config.py`) for:
 2. Add its parameter file under `parameters/` (use `[]` if it has no parameters).
 3. Add an entry to the `stacks:` list in `config/config.yaml`, in deploy order.
 
-No script changes are needed — `deploy.sh` and `delete.sh` pick it up from the
-config automatically.
+No script changes are needed — the deploy scripts and `delete.sh` pick it up
+from the config automatically. (The EKS stack is intentionally split out into
+`deploy-part2.sh`; `deploy-part1.sh` skips it by name.)

@@ -4,6 +4,12 @@ Description: >
   your workstation with "aws s3 cp", pull them on the instance inside the SSM
   session (and vice versa). Keyless, no inbound SSH.
 
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: sko26-cortexlab
+    Description: Prefix applied to all resource names in this stack.
+
 Resources:
   TransferBucket:
     Type: AWS::S3::Bucket
@@ -23,9 +29,9 @@ Resources:
         Status: Enabled
       Tags:
         - Key: Name
-          Value: sko26-cortexlab-transfer
+          Value: !Sub "${NamePrefix}-transfer"
         - Key: Project
-          Value: sko26-cortexlab
+          Value: !Ref NamePrefix
 
 Outputs:
   BucketName:

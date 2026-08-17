@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
 #
-# Deploy part 1: every stack EXCEPT the EKS stack.
+# Deploy part 2: the EKS stack only.
 #
 # Usage:
-#   scripts/deploy-part1.sh [stack-name]
+#   scripts/deploy-part2.sh
 #
-#   [stack-name]  Optional. Deploy a single (non-EKS) stack (e.g. "vpc").
-#                 If omitted, deploys every stack except "eks".
-#
-# The EKS stack is deployed separately by scripts/deploy-part2.sh: it takes
-# ~15 minutes and imports the private subnets (vpc) plus the VM security groups
-# and roles (linux-vm / win-vm), so those must exist first.
+# Run scripts/deploy-part1.sh first. The EKS stack imports the private subnets
+# (vpc stack) and the VM security groups and roles (linux-vm / win-vm stacks),
+# so those must be in place. Creating the cluster and node group takes ~15
+# minutes.
 #
 # Requires: aws CLI v2. Uses "aws cloudformation deploy" which creates or
 # updates the stack as needed and is a no-op when there are no changes.
 
 set -euo pipefail
 
-ONLY_STACK="${1:-}"
-
-# Stack deployed by deploy-part2.sh instead; skipped here.
-SKIP_STACK="eks"
+# The single stack this script deploys.
+ONLY_STACK="eks"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="${ROOT_DIR}/config/config.yaml"
@@ -86,15 +82,19 @@ for p in json.load(sys.stdin):
   aws cloudformation deploy "${deploy_args[@]}"
 }
 
+found=""
 for entry in "${STACKS[@]}"; do
   IFS='|' read -r name template params <<< "$entry"
-  if [[ "$name" == "$SKIP_STACK" ]]; then
+  if [[ "$name" != "$ONLY_STACK" ]]; then
     continue
   fi
-  if [[ -n "$ONLY_STACK" && "$ONLY_STACK" != "$name" ]]; then
-    continue
-  fi
+  found="yes"
   deploy_stack "$name" "$template" "$params"
 done
+
+if [[ -z "$found" ]]; then
+  echo "Stack '${ONLY_STACK}' is not defined in config.yaml." >&2
+  exit 1
+fi
 
 echo ">> Done."

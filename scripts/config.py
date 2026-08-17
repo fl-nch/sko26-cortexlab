@@ -17,6 +17,14 @@ import yaml
 
 
 def main():
+    # Emit LF, not CRLF. On Windows, Python's text-mode stdout would otherwise
+    # translate "\n" to "\r\n"; the trailing "\r" then rides along into the
+    # shell (mapfile / command substitution) and corrupts paths and names.
+    try:
+        sys.stdout.reconfigure(newline="\n")
+    except AttributeError:
+        pass  # Python < 3.7; reconfigure unavailable.
+
     if len(sys.argv) != 2:
         sys.exit("usage: config.py <region|prefix|tags|stacks>")
     field = sys.argv[1]

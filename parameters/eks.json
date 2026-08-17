@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "KubernetesVersion",
+    "ParameterValue": "1.32"
+  },
+  {
+    "ParameterKey": "NodeInstanceType",
+    "ParameterValue": "t3.medium"
+  },
+  {
+    "ParameterKey": "NodeGroupMinSize",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "NodeGroupDesiredSize",
+    "ParameterValue": "2"
+  },
+  {
+    "ParameterKey": "NodeGroupMaxSize",
+    "ParameterValue": "3"
+  }
+]
