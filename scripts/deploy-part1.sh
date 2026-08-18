@@ -43,11 +43,22 @@ fi
 cfg() { "$PY" "${ROOT_DIR}/scripts/config.py" "$1" < "$CONFIG"; }
 REGION="${AWS_REGION:-$(cfg region)}"
 STACK_PREFIX="$(cfg prefix)"
-mapfile -t TAGS < <(cfg tags)
-mapfile -t STACKS < <(cfg stacks)
+# Read into arrays with a portable loop (macOS ships bash 3.2, which has no
+# mapfile/readarray).
+TAGS=(); while IFS= read -r line; do TAGS+=("$line"); done < <(cfg tags)
+STACKS=(); while IFS= read -r line; do STACKS+=("$line"); done < <(cfg stacks)
 
 if [[ -z "$REGION" || -z "$STACK_PREFIX" ]]; then
   echo "config.yaml must define 'region' and 'stackPrefix'." >&2
+  exit 1
+fi
+
+# Guard against the unedited placeholder prefix. Each group must set its own
+# numeric group id in config.yaml (e.g. sko26-grp07-cortexlab) so stacks don't
+# collide in the shared account.
+if [[ "$STACK_PREFIX" == *XX* || ! "$STACK_PREFIX" =~ grp[0-9]+ ]]; then
+  echo "stackPrefix in config.yaml is still the placeholder ('${STACK_PREFIX}')." >&2
+  echo "Replace 'XX' with your group number (e.g. sko26-grp07-cortexlab) before deploying." >&2
   exit 1
 fi
 

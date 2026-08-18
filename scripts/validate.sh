@@ -46,7 +46,9 @@ if [[ -n "$CFN_LINT" ]]; then
   ( cd "$ROOT_DIR" && "$CFN_LINT" --config-file "$CFN_CONFIG" )
 else
   echo ">> cfn-lint not found; falling back to aws validate-template"
-  mapfile -t TEMPLATES < <(find "${ROOT_DIR}/templates" -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.json' \))
+  # Portable array fill (macOS ships bash 3.2, which has no mapfile/readarray).
+  TEMPLATES=()
+  while IFS= read -r line; do TEMPLATES+=("$line"); done < <(find "${ROOT_DIR}/templates" -type f \( -name '*.yaml' -o -name '*.yml' -o -name '*.json' \))
   if [[ ${#TEMPLATES[@]} -eq 0 ]]; then
     echo "No templates found under templates/." >&2
     exit 0

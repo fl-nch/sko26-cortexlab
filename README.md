@@ -68,6 +68,26 @@ manifest and deploy script to the transfer bucket and the VM pulls them to
 /opt/cortexlab/scripts/deploy-app.sh delete   # remove it
 ```
 
+Open an RDP desktop on the Windows VM (over SSM, no inbound rules). Run this
+**locally** — it needs the aws CLI v2 and the AWS Session Manager plugin — then
+point an RDP client at `localhost:13389`:
+
+```bash
+scripts/rdp-tunnel.sh            # forward localhost:13389 -> win-vm:3389
+scripts/rdp-tunnel.sh 23389      # use a different local port
+```
+
+First time, set an Administrator password from a PowerShell SSM session
+(`aws ssm start-session --target <id>` then `net user Administrator <pw>`).
+
+On Windows, run this from **Git Bash** — the tunnel binds on the Windows side so
+`mstsc.exe` reaches `localhost:13389` directly. It also works from **WSL**, but:
+the Linux aws CLI + Session Manager plugin (and `python3`/`pyyaml`, or an
+explicit `INSTANCE_ID`) must be installed inside the distro; WSL 1 shares
+`localhost` with Windows and just works; WSL 2 relies on localhost-forwarding,
+so if `mstsc` can't connect, enable mirrored networking (`networkingMode=mirrored`
+under `[wsl2]` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`).
+
 Tear down:
 
 ```bash
