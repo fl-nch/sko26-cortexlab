@@ -1,0 +1,110 @@
+SKO26 CortexLab - final-state architecture (GoCortex Broken Bank on EKS)
+========================================================================
+
+                          EXTERNAL  (reached via NAT -> IGW)
+       +-----------------------+                 +------------------------------+
+       |     Docker Hub        |                 |        Cortex XSIAM          |
+       |  gocortexio image     |                 |    HTTP Log Collector        |
+       +-----------^-----------+                 +--------------^---------------+
+                   | (b) image pull                            | (g) log ship
+                   |                                           |    [not wired]
+                   +---------------------+---------------------+
+                                         |
+ ====== AWS  ap-southeast-2 ============ | =================================
+                                         |
+                             +-----------+-----------+
+                             |    Internet Gateway   |
+                             +--+-----------------+--+
+                                ^                 ^
+                    (VM egress) |                 | (node egress)
+                                |          +------+-------+
+                                |          |  NAT Gateway |
+                                |          +------^-------+
+ ------------------------------ | VPC 10.0.0.0/16 | ------------------------
+                                |                 |
+   Operator                     |                 |
+      |  (a) SSM Session Manager |                 |
+      v                          |                 |
+ +--------------------------- PUBLIC SUBNET ------ | ----------------------+
+ |                                                 |                       |
+ |  +---------------------------+   +--------------|-------------------+   |
+ |  | Linux VM   t3.micro       |   | Windows VM   t3.small           |   |
+ |  | AL2023                    |   | Windows Server 2022             |   |
+ |  |  . SSM shell              |   |  . SSM / RDP-over-SSM           |   |
+ |  |  . kubectl + helm         |   |                                 |   |
+ |  |  . /opt/cortexlab assets  |   |                                 |   |
+ |  +----+-------------+--------+   +---------------+-----------------+   |
+ |       |             |                            |                     |
+ +-------|-------------|----------------------------|---------------------+
+         |             |                            |
+ (c)     |     (e)     |  exploit -> NodePort 30xxx |  exploit -> NodePort
+ kubectl |     hit any |  (from either VM)          |  30xxx
+ -> priv |     node IP |                            |
+   API   |             v                            v
+         |     +---------------------- EKS 1.34 ------------------------+
+         +---->|  control plane - PRIVATE-only API endpoint            |
+               |  (control-plane ENIs live in the private subnets)     |
+               +------------------------------------------------------+
+               |                                                      |
+               |  +------- PRIVATE SUBNET A -------+  +- SUBNET B ---+ |
+               |  | Node  t3.medium (AL2023)       |  | Node t3.med  | |
+               |  |                                |  |              | |
+               |  |  +--------------------------+  |  | NodePort     | |
+               |  |  |  brokenbank pod          |  |  | listens on   | |
+               |  |  |    Flask   8888 -> 30888 |  |  | EVERY node;  | |
+               |  |  |    Tomcat  8080 -> 30999 |  |  | kube-proxy   | |
+               |  |  |    Next.js 7777 -> 30777 |  |  | routes to    | |
+               |  |  |    metrics 9464 -> 30464 |  |  | the pod      | |
+               |  |  |    sshd      22 -> 30022 |  |  |              | |
+               |  |  |    ticker  6666 -> 30666 |  |  |              | |
+               |  |  +--------------------------+  |  +--------------+ |
+               |  +--------------------------------+                   |
+               |            ns: gocortexbrokenbank                     |
+               +------------------------------------------------------+
+                       |
+                       |  (f) callback: reverse shell / Log4Shell JNDI
+                       |      cluster SG -> VM SG, back to Linux/Windows VM
+                       v
+               (returns to the VMs in the public subnet)
+
+ +-------------------------- S3  (private, encrypted) ----------------------+
+ |  +--------------------------+        +-----------------------------+     |
+ |  | transfer bucket          |        | flow-logs  +  dns-logs      |     |
+ |  |   lab-assets/  <---+      |        |  (VPC flow + R53 DNS query) |     |
+ |  +--------------------------+        +-----------------------------+     |
+ |            ^  (d) pull @ first boot          ^  delivered by VPC / R53   |
+ +------------|--------------------------------|---------------------------+
+              |
+     deploy-part1.sh  --aws s3 sync-->  k8s/ config/ scripts/  ->  lab-assets/
+
+
+Flows
+-----
+  (a) Operator -> both VMs via SSM Session Manager (no keypair, no inbound).
+  (b) Node -> Docker Hub image pull, out through NAT -> IGW.
+  (c) Linux VM kubectl -> EKS private API endpoint (in-VPC only).
+  (d) Linux VM pulls staged assets from the transfer bucket on first boot
+      into /opt/cortexlab (non-fatal if nothing staged yet).
+  (e) VMs exploit the app by hitting any node's InternalIP on a NodePort.
+  (f) Compromised pod calls back to a VM (reverse shell / JNDI listener).
+  (g) App -> Cortex XSIAM log shipping via NAT -> IGW (not wired yet).
+
+
+Security groups (bidirectional)
+-------------------------------
+  VM SGs      -> cluster SG   : all traffic  (kubectl + exploit traffic)
+  cluster SG  -> VM SGs       : all traffic  (callbacks: reverse shell / JNDI)
+  VMs                          : no inbound; reached only via SSM
+
+
+Cluster access
+--------------
+  Auth mode API_AND_CONFIG_MAP. Each VM instance role is an EKS access entry
+  bound to cluster-admin, so kubectl works with no extra credentials.
+
+
+NodePort map (container port -> nodePort)
+-----------------------------------------
+  Flask    8888 -> 30888        metrics  9464 -> 30464
+  Tomcat   8080 -> 30999        sshd       22 -> 30022
+  Next.js  7777 -> 30777        ticker   6666 -> 30666

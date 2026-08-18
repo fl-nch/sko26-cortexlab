@@ -13,6 +13,92 @@ Resource names (and the `Project` tag) are all derived from `stackPrefix` in
 `config/config.yaml`: the deploy scripts pass it to every template as the
 `NamePrefix` parameter, and stack names are `<stackPrefix>-<stack>`.
 
+## Architecture at a glance
+
+```mermaid
+flowchart TB
+    operator([Operator / Instructor])
+    dockerhub[(Docker Hub<br/>gocortexio image)]
+    xsiam[(Cortex XSIAM<br/>HTTP Log Collector)]
+
+    subgraph VPC["VPC · ap-southeast-2"]
+      igw{{Internet Gateway}}
+      nat{{NAT Gateway}}
+
+      subgraph PUB["Public subnet"]
+        linux["Linux VM · AL2023 t3.micro<br/>SSM · kubectl + helm<br/>/opt/cortexlab assets"]
+        win["Windows VM · 2022 t3.small<br/>SSM · RDP-over-SSM"]
+      end
+
+      cp["EKS 1.34 control plane<br/>private-only API endpoint"]
+
+      subgraph PRA["Private subnet A"]
+        n1["Node t3.medium<br/>▶ brokenbank pod<br/>Flask·Tomcat·Next.js·ticker·sshd"]
+      end
+      subgraph PRB["Private subnet B"]
+        n2["Node t3.medium"]
+      end
+    end
+
+    subgraph S3G["S3 · private, encrypted"]
+      transfer[(transfer bucket<br/>lab-assets/)]
+      logs[(flow-logs + dns-logs)]
+    end
+
+    operator ==>|SSM Session Manager| linux
+    operator ==>|SSM Session Manager| win
+
+    linux -->|"kubectl → private API"| cp
+    linux -. "pull assets @ first boot" .-> transfer
+
+    linux ==>|"exploit → NodePort 30xxx"| n1
+    win  ==>|"exploit → NodePort 30xxx"| n2
+    n1 -.->|"reverse shell / JNDI callback"| linux
+    n2 -.->|"reverse shell / JNDI callback"| win
+
+    n1 --> nat
+    n2 --> nat
+    nat --> igw
+    igw --> dockerhub
+    igw --> xsiam
+    n1 -. "image pull" .-> dockerhub
+    n1 -. "log shipping (not wired)" .-> xsiam
+
+    VPC -. "VPC flow logs + Route53 DNS query logs" .-> logs
+```
+
+A plain-text rendering of the same topology lives at
+[architecture-diagram.txt](architecture-diagram.txt).
+
+**How to read it:**
+
+- **NodePort exposure** — the app is a NodePort Service, so each port listens on
+  *every* node (kube-proxy forwards to the pod, wherever it's scheduled). The
+  VMs hit any node's InternalIP on the mapped port:
+
+  | Component | Container port | NodePort |
+  |-----------|----------------|----------|
+  | Flask     | 8888           | 30888    |
+  | Tomcat    | 8080           | 30999    |
+  | SpaceATM (Next.js) | 7777  | 30777    |
+  | metrics   | 9464           | 30464    |
+  | sshd      | 22             | 30022    |
+  | ticker    | 6666           | 30666    |
+
+- **Security groups are bidirectional.** VM SGs → cluster SG (all traffic)
+  carries both kubectl and exploit traffic; cluster SG → VM SGs (all traffic)
+  carries callbacks (reverse shells, Log4Shell JNDI). The VMs otherwise take no
+  inbound — they're reached only via SSM.
+- **Cluster access** — each VM's instance role is an EKS access entry bound to
+  `cluster-admin` (auth mode `API_AND_CONFIG_MAP`), so kubectl works with no
+  extra credentials.
+- **Egress** — the private subnets reach the internet through a single NAT →
+  IGW (image pulls, and XSIAM log shipping once wired); the public-subnet VMs
+  egress directly via the IGW.
+- **Asset staging** — `deploy-part1.sh` syncs `k8s/`, `config/`, and `scripts/`
+  to `transfer/lab-assets/`; the Linux VM pulls them to `/opt/cortexlab/` on
+  first boot, so class starts at `deploy-app.sh`.
+
 ## Stacks
 
 | Stack   | Template | Purpose | Depends on |
