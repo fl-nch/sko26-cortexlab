@@ -122,6 +122,20 @@ stage_lab_assets() {
   for d in "${LAB_ASSET_DIRS[@]}"; do
     aws s3 sync --region "$REGION" "${ROOT_DIR}/${d}" "s3://${bucket}/lab-assets/${d}"
   done
+
+  # Pre-create the "cortex/" folder where students drop the Cortex Helm
+  # installer generated from the Cortex console. Uploading a README marker
+  # makes the (otherwise empty) prefix visible in the console and documents the
+  # workflow. Does not touch anything students later upload alongside it.
+  echo ">> Pre-creating s3://${bucket}/cortex/"
+  aws s3 cp --region "$REGION" - "s3://${bucket}/cortex/README.txt" <<'EOF'
+Upload your Cortex Helm installer here - the package generated from the Cortex
+console (a .tgz Helm chart, optionally with a separate values file).
+
+Then, on the Linux VM (SSM session), download it and deploy with helm:
+    /opt/cortexlab/scripts/fetch-cortex.sh
+    helm upgrade --install cortex /opt/cortexlab/cortex/<chart> [-f <values>]
+EOF
 }
 
 for entry in "${STACKS[@]}"; do

@@ -127,6 +127,9 @@ Resources:
               # the class can run /opt/cortexlab/scripts/deploy-app.sh directly.
               # Non-fatal if nothing is staged yet.
               mkdir -p /opt/cortexlab
+              # Record the transfer bucket name so on-VM scripts (e.g.
+              # deploy-cortex.sh) can locate it without CloudFormation access.
+              echo "${BucketName}" > /opt/cortexlab/transfer-bucket
               aws s3 cp --recursive "s3://${BucketName}/lab-assets/" /opt/cortexlab/ || true
               chmod -R a+rX /opt/cortexlab || true
               chmod +x /opt/cortexlab/scripts/*.sh 2>/dev/null || true

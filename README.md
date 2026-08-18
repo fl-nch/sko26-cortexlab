@@ -68,6 +68,21 @@ manifest and deploy script to the transfer bucket and the VM pulls them to
 /opt/cortexlab/scripts/deploy-app.sh delete   # remove it
 ```
 
+Deploy the Cortex Helm installer. Generate the Kubernetes/Helm installer in the
+Cortex console, upload it to the transfer bucket's `cortex/` folder (pre-created
+by `deploy-part1.sh`) from your workstation:
+
+```bash
+aws s3 cp <installer> s3://<transfer-bucket>/cortex/
+```
+
+Then, in an SSM session on the Linux VM, fetch it and deploy with helm:
+
+```bash
+/opt/cortexlab/scripts/fetch-cortex.sh    # -> /opt/cortexlab/cortex/
+helm upgrade --install cortex /opt/cortexlab/cortex/<chart> [-f <values>]
+```
+
 Open an RDP desktop on the Windows VM (over SSM, no inbound rules). Run this
 **locally** — it needs the aws CLI v2 and the AWS Session Manager plugin — then
 point an RDP client at `localhost:13389`:
