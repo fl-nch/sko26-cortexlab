@@ -1,0 +1,18 @@
+# Normalize line endings so files are stored LF in the repo and checked out LF
+# in the working tree, regardless of a user's core.autocrlf setting. Shell
+# scripts in particular MUST be LF or bash fails with "unexpected EOF" on the
+# stray carriage returns.
+* text=auto eol=lf
+
+# Belt-and-suspenders: force LF on the file types this repo actually runs.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+
+# Treat these as binary (never touch their bytes).
+*.png binary
+*.jpg binary
+*.gz  binary
+*.zip binary
