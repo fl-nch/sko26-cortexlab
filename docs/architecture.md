@@ -168,6 +168,84 @@ kubectl get nodes
 The node role also includes `AmazonSSMManagedInstanceCore`, so nodes can be
 reached through SSM Session Manager like the VMs.
 
+## Target workload: GoCortex Broken Bank
+
+The lab's target application is [GoCortex Broken Bank](https://github.com/gocortexio/gocortexbrokenbank),
+an intentionally-vulnerable, Cortex-focused training app. It is **not** a
+CloudFormation stack — it is a Kubernetes workload, deployed onto the `eks`
+cluster with `kubectl`. The manifest is vendored (and adapted) at
+`k8s/gocortexbrokenbank.yaml` so the deployed state is version-controlled like
+everything else here.
+
+**One container, six listeners:** Flask/Gunicorn (SAST + GraphQL), Tomcat (Java
+RCE endpoints), Next.js SpaceATM (CVE-2025-55182), an OTel Prometheus scrape
+endpoint, sshd (leaked key / weak root password), and a WebSocket ticker.
+
+**Exposure — NodePort, not hostPort.** Upstream exposes the app via `hostPort`
+with no Service, which would tie access to whichever node the pod lands on. The
+vendored manifest instead fronts the Deployment with a **NodePort Service** so
+the VMs get a stable target: hit *any* node's private IP on the pinned nodePort,
+regardless of where the pod is scheduled. Ports are remapped into the
+30000–32767 NodePort range, mirroring the native port in the last three digits:
+
+| Server | Native port | NodePort |
+|--------|-------------|----------|
+| Flask/Gunicorn (SAST, GraphQL) | 8888 | 30888 |
+| Tomcat (Java RCE) | 9999 | 30999 |
+| Next.js SpaceATM (CVE-2025-55182) | 7777 | 30777 |
+| OTel Prometheus scrape | 9464 | 30464 |
+| sshd (leaked key / weak root pw) | 2222 | 30022 |
+| Live Transaction Ticker (WS) | 6666 | 30666 |
+
+**Deploy from the Linux VM.** The EKS endpoint is private-only, so `kubectl`
+only resolves from inside the VPC. The Linux VM installs `kubectl` (matched to
+the cluster's minor version via the `KubectlMinorVersion` parameter) and Helm on
+first boot, so it is ready as the kubectl host.
+
+The lab assets are **pre-staged** so class time isn't spent copying files:
+`deploy-part1.sh` uploads the `k8s/`, `config/`, and `scripts/` directories to
+`s3://<transfer-bucket>/lab-assets/` right after the bucket stack is created
+(before the VMs boot), and the Linux VM pulls them to `/opt/cortexlab/` in its
+first-boot bootstrap. The repo stays the single source of truth; re-running
+`deploy-part1.sh` refreshes the staged copy. In class you just connect over SSM
+and run:
+
+```bash
+/opt/cortexlab/scripts/deploy-app.sh          # apply, print node IPs + NodePorts
+/opt/cortexlab/scripts/deploy-app.sh delete   # remove
+```
+
+(The VM role already grants `GetObject`/`ListBucket` on the transfer bucket, and
+the bucket name comes from the existing `transfer-bucket-name` export — no new
+IAM or exports. The boot-time pull is non-fatal if nothing is staged yet.)
+
+**Running exploits from the VMs.** The `eks` stack already allows *all* traffic
+from both VM security groups into the cluster security group, so VM → app
+(VM-as-attacker) works with no extra change:
+
+```bash
+curl "http://<node-ip>:30888/search?q=' OR '1'='1"          # SQLi (Flask)
+curl "http://<node-ip>:30999/exploit-app/execute?cmd=id"    # Java RCE (Tomcat)
+```
+
+**Callbacks to the VMs.** Exploits that call *back* to a listener on a VM
+(reverse shells, Log4Shell JNDI/DNS callouts) need the VM to accept inbound from
+the cluster. The `eks` stack adds `LinuxVmIngressFromCluster` /
+`WinVmIngressFromCluster` ingress rules allowing the cluster security group into
+each VM security group (pods egress via the node ENI, which is in that SG). This
+is the only pod → VM path; the VMs otherwise keep their no-inbound posture.
+
+**Image pull & log egress.** Nodes pull `gocortexio/gocortexbrokenbank:latest`
+from Docker Hub and can ship logs to Cortex XSIAM outbound via the NAT gateway.
+XSIAM log shipping is left unwired — the `LOG_ENDPOINT_*` / `LOG_AUTH_*` env in
+the manifest is commented out with instructions to fill in. (To avoid Docker Hub
+rate limits you can optionally mirror the image to ECR.)
+
+**Capacity note.** The container runs a JVM, Node, Gunicorn, and a small local
+LLM (the Concierge) together; on the default `t3.medium` nodes it fits but is
+tight. Bump `NodeInstanceType` in `parameters/eks.json` if it struggles to
+schedule.
+
 ## Cross-stack references
 
 `vpc` publishes `vpc-id`, `public-subnet-id`, `private-subnet-a-id`, and

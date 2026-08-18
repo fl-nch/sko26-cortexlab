@@ -12,6 +12,13 @@ Parameters:
     Type: String
     Default: t3.micro
     Description: EC2 instance type.
+  KubectlMinorVersion:
+    Type: String
+    Default: "1.34"
+    Description: >
+      Kubernetes minor version stream for the kubectl binary installed on first
+      boot. Keep this aligned with the eks stack's KubernetesVersion; the latest
+      patch of this minor is resolved at launch.
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
@@ -86,6 +93,45 @@ Resources:
       SubnetId: !ImportValue public-subnet-id
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
+      # First-boot bootstrap: install kubectl (matched to the cluster's minor
+      # version) and Helm so this VM is ready as the kubectl host, then pull the
+      # pre-staged lab assets from the transfer bucket. UserData only runs at
+      # launch, so changing it replaces the instance. Output is logged to
+      # /var/log/cloud-init-output.log.
+      UserData:
+        Fn::Base64:
+          !Sub
+            - |
+              #!/bin/bash
+              set -euxo pipefail
+              export AWS_DEFAULT_REGION="${Region}"
+              ARCH=amd64
+
+              # kubectl: resolve the latest patch of the configured minor version.
+              KVER="$(curl -sSL --retry 5 https://dl.k8s.io/release/stable-${KubectlMinorVersion}.txt)"
+              curl -sSL --retry 5 -o /usr/local/bin/kubectl \
+                "https://dl.k8s.io/release/${!KVER}/bin/linux/${!ARCH}/kubectl"
+              chmod 0755 /usr/local/bin/kubectl
+
+              # Helm via the official installer (detects arch, installs to /usr/local/bin).
+              curl -fsSL --retry 5 https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 -o /tmp/get-helm-3
+              chmod 0755 /tmp/get-helm-3
+              /tmp/get-helm-3
+
+              # Ensure both are on PATH for interactive SSM shells.
+              ln -sf /usr/local/bin/kubectl /usr/bin/kubectl
+              ln -sf /usr/local/bin/helm /usr/bin/helm
+
+              # Pull the pre-staged lab assets (k8s manifest, deploy-app.sh,
+              # config) that deploy-part1.sh uploaded to the transfer bucket, so
+              # the class can run /opt/cortexlab/scripts/deploy-app.sh directly.
+              # Non-fatal if nothing is staged yet.
+              mkdir -p /opt/cortexlab
+              aws s3 cp --recursive "s3://${BucketName}/lab-assets/" /opt/cortexlab/ || true
+              chmod -R a+rX /opt/cortexlab || true
+              chmod +x /opt/cortexlab/scripts/*.sh 2>/dev/null || true
+            - BucketName: !ImportValue transfer-bucket-name
+              Region: !Ref "AWS::Region"
       Tags:
         - Key: Name
           Value: !Sub "${NamePrefix}-linux-vm"

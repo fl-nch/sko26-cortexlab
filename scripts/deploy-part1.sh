@@ -22,6 +22,12 @@ ONLY_STACK="${1:-}"
 # Stack deployed by deploy-part2.sh instead; skipped here.
 SKIP_STACK="eks"
 
+# Repo directories staged to the transfer bucket (under lab-assets/) right after
+# the transfer-bucket stack is created, so the Linux VM can pull them on first
+# boot - the k8s manifest, deploy-app.sh, config.py and config.yaml. The repo
+# stays the single source of truth; the VM just gets a copy.
+LAB_ASSET_DIRS=(k8s config scripts)
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="${ROOT_DIR}/config/config.yaml"
 
@@ -86,6 +92,27 @@ for p in json.load(sys.stdin):
   aws cloudformation deploy "${deploy_args[@]}"
 }
 
+# Upload the lab-asset directories to the transfer bucket so the Linux VM pulls
+# them on boot. Runs after the transfer-bucket stack (which precedes the VMs),
+# so the files are in place before the VM launches. Idempotent: re-running
+# refreshes them. Non-fatal if the bucket name can't be resolved.
+stage_lab_assets() {
+  local bucket
+  bucket=$(aws cloudformation describe-stacks --region "$REGION" \
+    --stack-name "${STACK_PREFIX}-transfer-bucket" \
+    --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
+    --output text 2>/dev/null || true)
+  if [[ -z "$bucket" || "$bucket" == "None" ]]; then
+    echo "!! transfer-bucket name not found; skipping lab-asset staging." >&2
+    return 0
+  fi
+  echo ">> Staging lab assets to s3://${bucket}/lab-assets/"
+  local d
+  for d in "${LAB_ASSET_DIRS[@]}"; do
+    aws s3 sync --region "$REGION" "${ROOT_DIR}/${d}" "s3://${bucket}/lab-assets/${d}"
+  done
+}
+
 for entry in "${STACKS[@]}"; do
   IFS='|' read -r name template params <<< "$entry"
   if [[ "$name" == "$SKIP_STACK" ]]; then
@@ -95,6 +122,10 @@ for entry in "${STACKS[@]}"; do
     continue
   fi
   deploy_stack "$name" "$template" "$params"
+  # Stage the VM's lab assets as soon as the bucket exists, before the VMs boot.
+  if [[ "$name" == "transfer-bucket" ]]; then
+    stage_lab_assets
+  fi
 done
 
 echo ">> Done."

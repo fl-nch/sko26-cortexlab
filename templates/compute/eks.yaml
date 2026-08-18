@@ -13,7 +13,7 @@ Parameters:
     Description: Prefix applied to all resource names in this stack.
   KubernetesVersion:
     Type: String
-    Default: "1.32"
+    Default: "1.34"
     Description: >
       EKS Kubernetes control-plane version. Adjust if this version is outside
       the EKS standard-support window at deploy time.
@@ -142,6 +142,27 @@ Resources:
       IpProtocol: "-1"
       SourceSecurityGroupId: !ImportValue win-vm-sg-id
       Description: Allow all traffic from the Windows VM (kubectl + workloads)
+
+  # Reverse reachability: allow traffic from the cluster security group (worker
+  # nodes / pods egress via the node ENI, which is in this SG) back into each VM
+  # security group. This lets exploits that call back to a listener on a VM -
+  # reverse shells, Log4Shell JNDI/DNS callbacks - actually connect. The VMs
+  # otherwise have no inbound rules, so this is the only path pod -> VM.
+  LinuxVmIngressFromCluster:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !ImportValue linux-vm-sg-id
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !GetAtt Cluster.ClusterSecurityGroupId
+      Description: Allow callbacks from EKS nodes/pods (reverse shells, JNDI)
+
+  WinVmIngressFromCluster:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !ImportValue win-vm-sg-id
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !GetAtt Cluster.ClusterSecurityGroupId
+      Description: Allow callbacks from EKS nodes/pods (reverse shells, JNDI)
 
   # kubectl authorization: map each VM instance role as a cluster admin.
   LinuxVmAccessEntry:

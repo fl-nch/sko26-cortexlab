@@ -13,6 +13,7 @@ templates/     CloudFormation templates, grouped by domain (one stack per file)
   iam/         Roles and policies
 parameters/    Parameter values, one file per stack
 config/        Deploy config: region, tags, stack order
+k8s/           Kubernetes workloads deployed onto the EKS cluster
 scripts/       deploy / validate / delete helpers
 tests/         cfn-lint and cfn-guard configs
 docs/          Architecture notes
@@ -55,6 +56,16 @@ Deploy a single (non-EKS) stack:
 
 ```bash
 scripts/deploy-part1.sh vpc
+```
+
+Deploy the target app (GoCortex Broken Bank) onto the cluster. The EKS endpoint
+is private, so this runs **from the Linux VM**. `deploy-part1.sh` pre-stages the
+manifest and deploy script to the transfer bucket and the VM pulls them to
+`/opt/cortexlab/` on boot, so in an SSM session on the Linux VM you just run:
+
+```bash
+/opt/cortexlab/scripts/deploy-app.sh          # apply k8s/gocortexbrokenbank.yaml, print access info
+/opt/cortexlab/scripts/deploy-app.sh delete   # remove it
 ```
 
 Tear down:

@@ -1,0 +1,138 @@
+# GoCortex Broken Bank - Kubernetes deployment for the sko26-cortexlab EKS cluster.
+#
+# Vendored from https://github.com/gocortexio/gocortexbrokenbank and adapted for
+# this lab: the upstream manifest exposes the app via hostPort with no Service;
+# here we front it with a NodePort Service so the lab VMs get a stable address
+# (any node's private IP) that survives pod reschedules. The EKS stack already
+# allows all traffic from both VM security groups into the cluster security
+# group, so no extra security-group change is needed for VM -> app traffic.
+#
+# INTENTIONALLY VULNERABLE: the hardcoded secrets below are part of the app's
+# training profile - do not "harden" them.
+#
+# Deploy from the Linux VM (the EKS API endpoint is private-only):
+#   scripts/deploy-app.sh
+# or directly:
+#   aws eks update-kubeconfig --region ap-southeast-2 --name <prefix>-eks
+#   kubectl apply -f k8s/gocortexbrokenbank.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gocortexbrokenbank
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gocortexbrokenbank
+  namespace: gocortexbrokenbank
+  labels:
+    app: gocortexbrokenbank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gocortexbrokenbank
+  template:
+    metadata:
+      labels:
+        app: gocortexbrokenbank
+    spec:
+      containers:
+        - name: gocortexbrokenbank
+          image: gocortexio/gocortexbrokenbank:latest
+          imagePullPolicy: Always
+          # No hostPort here - the Service (below) handles exposure. These are
+          # the ports the container listens on.
+          ports:
+            - name: flask
+              containerPort: 8888   # Flask/Gunicorn - banking UI + SAST endpoints
+              protocol: TCP
+            - name: tomcat
+              containerPort: 8080   # Tomcat - Java RCE exploit endpoints
+              protocol: TCP
+            - name: spaceatm
+              containerPort: 7777   # Next.js SpaceATM (CVE-2025-55182)
+              protocol: TCP
+            - name: metrics
+              containerPort: 9464   # OTel Prometheus scrape endpoint
+              protocol: TCP
+            - name: ssh
+              containerPort: 22     # sshd - leaked key / weak root password
+              protocol: TCP
+            - name: ticker
+              containerPort: 6666   # Live Transaction Ticker (WebSocket)
+              protocol: TCP
+          env:
+            - name: SESSION_SECRET
+              value: "hardcoded-docker-secret-key"
+            - name: DATABASE_URL
+              value: "sqlite:///app/instance/gocortexbrokenbank.db"
+            - name: FLASK_ENV
+              value: "production"
+            - name: LOCALE
+              value: "en"  # Supported: en (English/Australian), kr (Korean)
+            # --- Cortex XSIAM log shipping (not wired yet) -------------------
+            # Fill these in to ship detections to your XSIAM HTTP Log Collector,
+            # then re-apply. XSIAM uses the raw token in the Authorization
+            # header (no "Bearer" prefix). See the app README "SIEM Log
+            # Shipping" section. Nodes reach XSIAM outbound via the NAT gateway.
+            # - name: LOG_ENDPOINT_NETBANK_AUTH
+            #   value: "https://api-<tenant>.xdr.<region>.paloaltonetworks.com/logs/v1/event"
+            # - name: LOG_AUTH_NETBANK_AUTH
+            #   value: "<xsiam-api-key>"
+            # - name: LOG_ENDPOINT_NETBANK_APP
+            #   value: "https://api-<tenant>.xdr.<region>.paloaltonetworks.com/logs/v1/event"
+            # - name: LOG_AUTH_NETBANK_APP
+            #   value: "<xsiam-api-key>"
+            # - name: LOG_ENDPOINT_TOMCAT_ACCESS
+            #   value: "https://api-<tenant>.xdr.<region>.paloaltonetworks.com/logs/v1/event"
+            # - name: LOG_AUTH_TOMCAT_ACCESS
+            #   value: "<xsiam-api-key>"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gocortexbrokenbank
+  namespace: gocortexbrokenbank
+  labels:
+    app: gocortexbrokenbank
+spec:
+  type: NodePort
+  selector:
+    app: gocortexbrokenbank
+  # NodePorts must be in 30000-32767, so the app's native ports are remapped.
+  # From a VM, hit any node's private IP on the nodePort. The port numbers are
+  # pinned (mirroring the native port in the last three digits) so exploit
+  # commands are stable across redeploys.
+  ports:
+    - name: flask
+      port: 8888
+      targetPort: 8888
+      nodePort: 30888   # native 8888  (Flask/Gunicorn, SAST + GraphQL)
+      protocol: TCP
+    - name: tomcat
+      port: 9999
+      targetPort: 8080
+      nodePort: 30999   # native 9999  (Tomcat Java RCE endpoints)
+      protocol: TCP
+    - name: spaceatm
+      port: 7777
+      targetPort: 7777
+      nodePort: 30777   # native 7777  (Next.js SpaceATM, CVE-2025-55182)
+      protocol: TCP
+    - name: metrics
+      port: 9464
+      targetPort: 9464
+      nodePort: 30464   # native 9464  (OTel Prometheus scrape)
+      protocol: TCP
+    - name: ssh
+      port: 2222
+      targetPort: 22
+      nodePort: 30022   # native 2222  (sshd: leaked key / weak root password)
+      protocol: TCP
+    - name: ticker
+      port: 6666
+      targetPort: 6666
+      nodePort: 30666   # native 6666  (Live Transaction Ticker WebSocket)
+      protocol: TCP

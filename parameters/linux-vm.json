@@ -2,5 +2,9 @@
   {
     "ParameterKey": "InstanceType",
     "ParameterValue": "t3.micro"
+  },
+  {
+    "ParameterKey": "KubectlMinorVersion",
+    "ParameterValue": "1.34"
   }
 ]
