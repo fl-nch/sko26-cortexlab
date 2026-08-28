@@ -60,7 +60,7 @@ Resources:
                   - s3:DeleteObject
                 Resource: !Sub
                   - "${BucketArn}/*"
-                    - BucketArn:
+                  - BucketArn:
                       Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-arn"
         # Lets "aws eks update-kubeconfig" fetch the cluster endpoint/CA. The
         # in-cluster RBAC still comes from the EKS access entry (cluster-admin);

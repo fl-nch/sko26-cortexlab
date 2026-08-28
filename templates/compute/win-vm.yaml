@@ -52,7 +52,7 @@ Resources:
                   - s3:DeleteObject
                 Resource: !Sub
                   - "${BucketArn}/*"
-                    - BucketArn:
+                  - BucketArn:
                       Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-arn"
       Tags:
         - Key: Project

@@ -3,7 +3,7 @@
 A hands-on lab that stands up a deliberately vulnerable Kubernetes app on AWS EKS
 and secures it with **Cortex Cloud** (KSPM + realtime protection).
 
-- **Format:** groups of 3, working in one shared AWS account per group.
+- **Format:** groups of 2 or 4, working in one shared AWS account per group.
 - **Duration:** one 90-minute session
 - **Session possibilities:**
       *mandatory* deploy the Part 1 AWS infrastructure and onboard the account to Cortex Cloud.
@@ -138,7 +138,7 @@ aws sts get-caller-identity
 ```
 
 > ⚠️ **These credentials expire** (typically a few hours). They live only in
-> this terminal window — if you open a new window, or come back for Session 2,
+> this terminal window — if you open a new terminal window later,
 > **re-export them**. If commands suddenly fail with `ExpiredToken`, grab fresh
 > creds from LaaS and re-export. See [Troubleshooting](#troubleshooting).
 
@@ -263,7 +263,7 @@ security groups/roles from Part 1, so Part 1 must be finished first (it is).
 
 Leave the terminal running; it prints `>> Done.` when the cluster is ready. If
 you need the window back, EKS keeps building in AWS regardless — just verify it's
-`CREATE_COMPLETE` at the start of Session 2:
+`CREATE_COMPLETE` before you continue:
 
 ```bash
 aws cloudformation describe-stacks --stack-name sko26-grpNN-cortexlab-eks \
@@ -400,7 +400,7 @@ reach `Running`.
    incident** in Cortex. Point out the process/exec chain the agent captured.
 
 
-**Checkpoint (end of Session 2):** the vulnerable app is running, the Cortex
+**Checkpoint (end of lab):** the vulnerable app is running, the Cortex
 agent (KSPM + runtime) is deployed on the cluster, KSPM findings are visible, and
 a live exploit produced a runtime detection.
 
