@@ -26,7 +26,7 @@ flowchart TB
       nat{{NAT Gateway}}
 
       subgraph PUB["Public subnet"]
-        linux["Linux VM · AL2023 t3.micro<br/>SSM · kubectl + helm<br/>/opt/cortexlab assets"]
+        linux["Linux VM · Ubuntu 24.04 t3.medium<br/>SSM · kubectl + helm + docker<br/>/opt/cortexlab assets"]
         win["Windows VM · 2022 t3.small<br/>SSM · RDP-over-SSM"]
       end
 
@@ -106,7 +106,7 @@ A plain-text rendering of the same topology lives at
 | vpc     | `templates/network/vpc.yaml` | VPC, internet gateway, public subnet, two private subnets, NAT gateway, routing. | — |
 | logging | `templates/network/logging.yaml` | VPC Flow Logs and Route 53 Resolver DNS query logging, each to its own hardened S3 bucket. | vpc |
 | transfer-bucket | `templates/storage/s3.yaml`  | S3 file-transfer relay bucket. | — |
-| linux-vm | `templates/compute/linux-vm.yaml` | Linux (AL2023) EC2 instance + SSM instance role with S3 access. | vpc, transfer-bucket |
+| linux-vm | `templates/compute/linux-vm.yaml` | Linux (Ubuntu 24.04) EC2 instance + SSM instance role with S3 access; first boot installs AWS CLI, Docker, kubectl, Helm. Ubuntu (not AL2023) so cortexcli image scans are supported. | vpc, transfer-bucket |
 | win-vm  | `templates/compute/win-vm.yaml` | Windows Server 2022 EC2 instance in the same subnet + SSM instance role with S3 access. | vpc, transfer-bucket |
 | eks     | `templates/compute/eks.yaml` | EKS cluster (private-only endpoint) + managed node group in the private subnets; VM security groups and instance roles are granted access. | vpc, linux-vm, win-vm |
 
@@ -136,8 +136,8 @@ session. Each VM stack outputs its instance ID and a ready-made connect command.
 The security groups have **no inbound rules**; outbound is open.
 
 Both VMs share the public subnet and the S3 transfer bucket. The Windows VM
-defaults to `t3.small` (Windows Server needs more memory than the Linux VM's
-`t3.micro`).
+defaults to `t3.small`; the Linux VM defaults to `t3.medium`, sized to run
+`cortexcli` container image scans against its local Docker daemon.
 
 ### RDP to the Windows VM
 
