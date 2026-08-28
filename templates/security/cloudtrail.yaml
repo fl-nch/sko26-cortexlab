@@ -24,6 +24,11 @@ Resources:
     Type: AWS::S3::Bucket
     # Name is auto-generated to avoid global-namespace collisions; the actual
     # name is published as an output/export.
+    # S3 validates it can publish to NewFileTopic when the bucket is created, so
+    # the topic policy granting s3.amazonaws.com must exist first. The !Ref in
+    # NotificationConfiguration only orders the topic (not its policy) before the
+    # bucket, so depend on the policy explicitly to avoid a create-time race.
+    DependsOn: NewFileTopicPolicy
     Properties:
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true

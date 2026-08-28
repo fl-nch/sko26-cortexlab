@@ -4,7 +4,7 @@ AWS CloudFormation infrastructure for a single-account, single-environment
 setup, organized by stack.
 
 > **Running the lab?** Start with the [Lab Guide](docs/lab-guide.md) — a
-> step-by-step walkthrough for the two-session, groups-of-three format
+> step-by-step walkthrough for the single-session, groups-of-two-or-four format
 > (prerequisites, deploy, Cortex Cloud onboarding, KSPM + realtime protection).
 
 ## Layout
