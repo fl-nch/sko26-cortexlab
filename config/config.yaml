@@ -2,7 +2,7 @@
 # Consumed by the deploy scripts to resolve region, tags, and stack order.
 
 region: ap-southeast-2
-stackPrefix: sko26-grp0-cortexlab
+stackPrefix: sko26-grpXX-cortexlab
 
 # Project is tagged per-resource inside each template (driven by NamePrefix),
 # so it's intentionally not repeated here.
