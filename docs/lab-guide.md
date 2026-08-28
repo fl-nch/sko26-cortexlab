@@ -56,9 +56,15 @@ Use **Git Bash** for every command in this guide (not PowerShell or CMD).
 1. **Git (includes Git Bash)** — https://git-scm.com/download/win
    Run the installer with defaults, then open **Git Bash** for the steps below.
 2. **AWS CLI v2** — https://awscli.amazonaws.com/AWSCLIV2.msi (run the MSI).
-3. **AWS Session Manager plugin** —
-   https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPlugin.exe
-   (run the installer).
+3. **AWS Session Manager plugin** — choose either installation method:
+    - **WinGet** (run in PowerShell or Git Bash):
+       ```powershell
+       winget install --id Amazon.SessionManagerPlugin --exact
+       ```
+    - **Manual download:** download and run the official installer:
+       https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPluginSetup.exe
+       Run it as Administrator and leave the install location blank to use the
+       default `%PROGRAMFILES%\Amazon\SessionManagerPlugin\bin\` location.
 4. **Python 3** — https://www.python.org/downloads/windows/
    ✅ On the first installer screen, tick **"Add python.exe to PATH."**
 5. **cfn-lint** — in Git Bash:

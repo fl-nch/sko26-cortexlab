@@ -12,7 +12,7 @@ Parameters:
     Description: Prefix applied to all resource names in this stack.
   InstanceType:
     Type: String
-    Default: t3.small
+    Default: t3.medium
     Description: EC2 instance type (Windows needs more memory than the Linux VM).
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
