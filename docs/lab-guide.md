@@ -208,6 +208,8 @@ Inside the session, confirm the lab assets landed and the tools are installed:
 ls /opt/cortexlab            # k8s/  config/  scripts/  transfer-bucket
 kubectl version --client
 helm version
+aws --version                # AWS CLI v2, installed on first boot
+docker version               # local Docker daemon for cortexcli image scans (no sudo needed)
 exit                         # leave the SSM session
 ```
 

@@ -28,8 +28,8 @@ SKO26 CortexLab - final-state architecture (GoCortex Broken Bank on EKS)
  +--------------------------- PUBLIC SUBNET ------ | ----------------------+
  |                                                 |                       |
  |  +---------------------------+   +--------------|-------------------+   |
- |  | Linux VM   t3.micro       |   | Windows VM   t3.small           |   |
- |  | AL2023                    |   | Windows Server 2022             |   |
+ |  | Linux VM   t3.medium      |   | Windows VM   t3.small           |   |
+ |  | Ubuntu 24.04              |   | Windows Server 2022             |   |
  |  |  . SSM shell              |   |  . SSM / RDP-over-SSM           |   |
  |  |  . kubectl + helm         |   |                                 |   |
  |  |  . /opt/cortexlab assets  |   |                                 |   |

@@ -10,7 +10,7 @@ Parameters:
     Description: Prefix applied to all resource names in this stack.
   InstanceType:
     Type: String
-    Default: t3.micro
+    Default: t3.medium
     Description: EC2 instance type.
   KubectlMinorVersion:
     Type: String
@@ -21,10 +21,13 @@ Parameters:
       patch of this minor is resolved at launch.
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
     Description: >
-      Latest Amazon Linux 2023 AMI, resolved from the public SSM parameter.
-      AL2023 ships with the SSM Agent pre-installed.
+      Latest Ubuntu 24.04 LTS AMI, resolved from Canonical's public SSM
+      parameter. Ubuntu is used (over AL2023) because cortexcli container image
+      scans are supported on Ubuntu but not on AL2023. Canonical's cloud image
+      ships the SSM Agent pre-installed (via snap); the AWS CLI and a container
+      runtime are not, so first-boot UserData installs both.
 
 Resources:
   # Role that lets the instance be managed by SSM Session Manager.
@@ -103,11 +106,21 @@ Resources:
       SubnetId: !ImportValue public-subnet-id
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
-      # First-boot bootstrap: install kubectl (matched to the cluster's minor
-      # version) and Helm so this VM is ready as the kubectl host, then pull the
-      # pre-staged lab assets from the transfer bucket. UserData only runs at
-      # launch, so changing it replaces the instance. Output is logged to
-      # /var/log/cloud-init-output.log.
+      BlockDeviceMappings:
+        # Ubuntu AMIs expose the root volume as /dev/sda1 (AL2023 used /dev/xvda).
+        # This name must match the AMI's root device or the override won't apply.
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      # First-boot bootstrap: install the AWS CLI v2 and Docker (neither ships on
+      # Ubuntu), then kubectl (matched to the cluster's minor version) and Helm
+      # so this VM is ready as the kubectl host and as a cortexcli image-scan
+      # host, then pull the pre-staged lab assets from the transfer bucket.
+      # UserData only runs at launch, so changing it replaces the instance.
+      # Output is logged to /var/log/cloud-init-output.log.
       UserData:
         Fn::Base64:
           !Sub
@@ -115,7 +128,40 @@ Resources:
               #!/bin/bash
               set -euxo pipefail
               export AWS_DEFAULT_REGION="${Region}"
+              export DEBIAN_FRONTEND=noninteractive
               ARCH=amd64
+
+              # Base packages. curl/unzip drive the installers below; docker.io
+              # gives cortexcli a local daemon to scan images against. The apt
+              # lock timeout rides out cloud-init's early-boot apt-daily jobs so
+              # this doesn't fail the whole bootstrap on a transient lock.
+              apt-get -o DPkg::Lock::Timeout=600 update -y
+              apt-get -o DPkg::Lock::Timeout=600 install -y \
+                curl unzip ca-certificates docker.io
+              systemctl enable --now docker
+
+              # Let the interactive SSM user run docker without sudo. The
+              # docker socket is root-owned but group-owned by "docker" (the
+              # docker.io package creates that group), so group membership is
+              # sufficient. The catch: ssm-user is created lazily on first SSM
+              # session, which is too late for a boot-time usermod. So pre-create
+              # ssm-user here and add it to the group before any session starts;
+              # SSM Agent reuses an existing ssm-user and still grants it
+              # passwordless sudo. Also add the default "ubuntu" cloud user.
+              # (There is no ec2-user on Ubuntu; that is an Amazon Linux account.)
+              groupadd -f docker
+              useradd -m -s /bin/bash ssm-user 2>/dev/null || true
+              usermod -aG docker ssm-user
+              usermod -aG docker ubuntu 2>/dev/null || true
+
+              # AWS CLI v2 (Ubuntu has no aws CLI preinstalled; installs to
+              # /usr/local/bin/aws).
+              curl -sSL --retry 5 \
+                "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" \
+                -o /tmp/awscliv2.zip
+              unzip -q /tmp/awscliv2.zip -d /tmp
+              /tmp/aws/install
+              ln -sf /usr/local/bin/aws /usr/bin/aws
 
               # kubectl: resolve the latest patch of the configured minor version.
               KVER="$(curl -sSL --retry 5 https://dl.k8s.io/release/stable-${KubectlMinorVersion}.txt)"
