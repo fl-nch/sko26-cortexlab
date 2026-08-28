@@ -28,13 +28,21 @@ docs/          Architecture notes
 - **One template per stack**, grouping resources that share a lifecycle.
 - **Parameters live in `parameters/<stack>.json`**, separate from templates.
 - **Cross-stack wiring** via CloudFormation Exports/Imports (e.g. `vpc-id`).
-- **Stacks are named** `sko26-cortexlab-<stack>` (e.g. `sko26-cortexlab-vpc`).
+- **Stacks are named** `<stackPrefix>-<stack>` (e.g. `sko26-grp0-cortexlab-vpc`).
 
 ## Prerequisites
 
+Install these before running the scripts:
+
 - AWS CLI v2, configured with credentials for the target account.
-- (Recommended) [`cfn-lint`](https://github.com/aws-cloudformation/cfn-lint)
-  for template validation.
+- AWS Session Manager plugin, required for SSM shells and the RDP tunnel.
+- Python 3 with PyYAML, used by the deployment scripts to read the config.
+- Git and Git Bash on Windows (or Terminal on macOS).
+- [`cfn-lint`](https://github.com/aws-cloudformation/cfn-lint) for template validation.
+- An RDP client if you want a desktop session on the Windows VM.
+
+For installation commands, including the Windows WinGet command and the manual
+Session Manager plugin installer, see the [Lab Guide prerequisites](docs/lab-guide.md#before-you-start--prerequisites).
 
 ## Usage
 
@@ -60,6 +68,14 @@ Deploy a single (non-EKS) stack:
 
 ```bash
 scripts/deploy-part1.sh vpc
+```
+
+The network log stack is named `network-logging` to distinguish it from
+CloudTrail:
+
+```bash
+scripts/deploy-part1.sh network-logging
+scripts/delete.sh network-logging
 ```
 
 Deploy the target app (GoCortex Broken Bank) onto the cluster. The EKS endpoint

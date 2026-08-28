@@ -4,19 +4,22 @@ A hands-on lab that stands up a deliberately vulnerable Kubernetes app on AWS EK
 and secures it with **Cortex Cloud** (KSPM + realtime protection).
 
 - **Format:** groups of 3, working in one shared AWS account per group.
-- **Duration:** two 90-minute sessions with a break in between.
-- **Session 1:** deploy the Part 1 AWS infrastructure and onboard the account to
-  Cortex Cloud.
-- **Break:** kick off the EKS deployment (~15 min, runs unattended).
-- **Session 2:** deploy the vulnerable app, then deploy the Cortex KSPM +
-  realtime protection agent and watch it light up.
+- **Duration:** one 90-minute session
+- **Session possibilities:**
+      *mandatory* deploy the Part 1 AWS infrastructure and onboard the account to Cortex Cloud.
+      deploy Part 2 AWS infrastucture - Kubernetes (~15 min, runs unattended).
+      deploy the vulnerable app, then deploy the Cortex KSPM + realtime protection agent
+      deploy cortexcli and explore appsec scanning of the vulnerable app
+      exploit the vulnerable app
+      introduce configuration weaknesses to AWS
+      explore!!
 
 > Architecture reference: [architecture.md](architecture.md). Stack/port tables
 > in that doc are the source of truth if anything here drifts.
 
 ---
 
-## Working as a group of three
+## Working as a group of two or 4
 
 You share one AWS account and one Cortex tenant view, so **only one person runs
 the deploy commands at a time** — CloudFormation stacks and the EKS cluster are
@@ -27,14 +30,15 @@ shared state. Suggested split so everyone stays busy:
 | **Driver** | Runs the terminal commands (clone, deploy scripts, SSM sessions). |
 | **Navigator** | Reads this guide aloud, tracks the checklist, watches for errors. |
 | **Console** | Drives the Cortex Cloud console and the AWS console (verifying stacks, watching findings). |
+| **Hacker** | Explore and execute exploits on Broken Bank. |
 
-Rotate roles between Session 1 and Session 2 so everyone touches the CLI.
+Consider rotating roles so everyone gets to experience each part.
 
 ---
 
 ## Before you start — Prerequisites
 
-Install these **before Session 1**. Everything in this lab runs from a Bash
+Install these **before the Session**. Everything in this lab runs from a Bash
 shell: **Git Bash** on Windows, **Terminal** on macOS.
 
 You need, on your workstation:
@@ -110,16 +114,15 @@ is typically `~/AppData/Roaming/Python/PythonXY/Scripts`.
 
 ---
 
-## Session 1 (90 min) — Part 1 infrastructure + Cortex onboarding
-
 ### 1. Get an AWS account and load the credentials
 
 Your instructor will point you at **Lab as a Service (LaaS)** to request a
 temporary AWS account for your group. Request **one account per group** and share
-the credentials among the three of you.
+the credentials among the group.
 
-LaaS gives you a set of temporary credentials. In **the same Git Bash / Terminal
-window** you'll use for the rest of the lab, paste them as environment variables:
+Once you get to the AWS login, you can get a set of temporary credentials.
+In **the same Git Bash / Terminal window** you'll use for the rest of the lab,
+paste them as environment variables:
 
 ```bash
 export AWS_ACCESS_KEY_ID="ASIA...."
@@ -237,16 +240,9 @@ Now connect this AWS account to Cortex Cloud so it can assess cloud posture.
    `aws sts get-caller-identity` from step 1) and region `ap-southeast-2`.
 5. Wait for the account to show **Connected / healthy** in the Cortex console.
 
-> ⓘ **Instructor — fill in the tenant-specific bits before class:**
-> - Cortex Cloud console URL and login method (SSO?).
-> - Exact onboarding path (menu location, connection type: agentless CFT vs.
->   role, scan scope).
-> - Whether students launch the onboarding CFN in their LaaS account (and if so,
->   that it won't collide with the `sko26-grpNN` stacks).
-> - Expected time for the first posture scan to appear.
 
-**Checkpoint (end of Session 1):** Part 1 stacks are `CREATE_COMPLETE`, you can
-SSM into the Linux VM, and your AWS account shows as connected in Cortex Cloud.
+**Checkpoint Part 1:** Part 1 stacks are `CREATE_COMPLETE`, you can
+SSM into the Linux VM, and your AWS account shows as connected/healthy in Cortex Cloud.
 
 ---
 
@@ -276,7 +272,7 @@ aws cloudformation describe-stacks --stack-name sko26-grpNN-cortexlab-eks \
 
 ---
 
-## Session 2 (90 min) — Vulnerable app + KSPM + realtime protection
+## Vulnerable Kubernetes app + KSPM + realtime protection
 
 > **First thing:** if you're in a fresh terminal window, re-export your AWS
 > credentials (step 1) — and refresh them from LaaS if they've expired.
@@ -358,10 +354,6 @@ enabled:
 3. Enable **KSPM** and **runtime (realtime) protection**.
 4. Download the generated Helm chart (`.tgz`), plus any separate values file.
 
-> ⓘ **Instructor — fill in:** exact console path, the feature toggle names in
-> your tenant, the cluster name/label to enter, and whether it's one chart or a
-> chart + values file.
-
 ### 5. Upload the installer to the transfer bucket
 
 SSM has no file copy, so relay through the transfer bucket. From **your
@@ -377,7 +369,6 @@ aws s3 cp ./<cortex-installer>.tgz "s3://$BUCKET/cortex/"
 # if you also have a values file:
 aws s3 cp ./<values>.yaml "s3://$BUCKET/cortex/"
 ```
-
 ### 6. Fetch and install on the cluster (on the Linux VM)
 
 Back in the Linux VM SSM session, pull the installer down and deploy with Helm:
@@ -399,10 +390,6 @@ kubectl get pods -A | grep -i cortex
 You should see the defender/agent pods (typically a DaemonSet, one per node)
 reach `Running`.
 
-> ⓘ **Instructor — fill in:** the exact chart filename convention, the release
-> name/namespace Cortex expects, and any `--namespace`/`--create-namespace`
-> flags your installer needs.
-
 ### 7. Verify in the Cortex Cloud console
 
 1. **KSPM:** within a few minutes the cluster should appear under Kubernetes
@@ -412,9 +399,6 @@ reach `Running`.
    Tomcat RCE `curl`) and look for a corresponding **runtime detection /
    incident** in Cortex. Point out the process/exec chain the agent captured.
 
-> ⓘ **Instructor — fill in:** where KSPM findings vs. runtime incidents live in
-> your tenant, and one or two specific detections students should expect so they
-> know they've succeeded.
 
 **Checkpoint (end of Session 2):** the vulnerable app is running, the Cortex
 agent (KSPM + runtime) is deployed on the cluster, KSPM findings are visible, and
