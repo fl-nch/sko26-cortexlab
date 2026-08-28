@@ -73,6 +73,10 @@ SKO26 CortexLab - final-state architecture (GoCortex Broken Bank on EKS)
  |  |   lab-assets/  <---+      |        |  (VPC flow + R53 DNS query) |     |
  |  +--------------------------+        +-----------------------------+     |
  |            ^  (d) pull @ first boot          ^  delivered by VPC / R53   |
+ |                                       +-----------------------------+     |
+ |                                       | cloudtrail                  |     |
+ |                                       |  (h) all mgmt + data events |     |
+ |                                       +-----------------------------+     |
  +------------|--------------------------------|---------------------------+
               |
      deploy-part1.sh  --aws s3 sync-->  k8s/ config/ scripts/  ->  lab-assets/
@@ -88,6 +92,8 @@ Flows
   (e) VMs exploit the app by hitting any node's InternalIP on a NodePort.
   (f) Compromised pod calls back to a VM (reverse shell / JNDI listener).
   (g) App -> Cortex XSIAM log shipping via NAT -> IGW (not wired yet).
+  (h) Multi-region CloudTrail records all account management + S3/Lambda data
+      events to the cloudtrail bucket (log-file validation on).
 
 
 Security groups (bidirectional)

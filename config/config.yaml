@@ -18,6 +18,9 @@ stacks:
   - name: logging
     template: templates/network/logging.yaml
     parameters: parameters/logging.json
+  - name: cloudtrail
+    template: templates/security/cloudtrail.yaml
+    parameters: parameters/cloudtrail.json
   - name: transfer-bucket
     template: templates/storage/s3.yaml
     parameters: parameters/s3.json

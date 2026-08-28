@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Account audit logging: a multi-region CloudTrail trail that records all
+  management events and all S3 + Lambda data events, delivered to its own
+  hardened S3 bucket. Log-file validation is enabled so the delivered logs are
+  tamper-evident.
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: sko26-cortexlab
+    Description: Prefix applied to all resource names in this stack.
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    Description: Number of days to keep CloudTrail log objects before expiry.
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # CloudTrail log bucket (same hardened pattern as the VPC/DNS log buckets:
+  # public access blocked, ACLs disabled, SSE-S3, lifecycle expiry).
+  # ---------------------------------------------------------------------------
+  TrailBucket:
+    Type: AWS::S3::Bucket
+    # Name is auto-generated to avoid global-namespace collisions; the actual
+    # name is published as an output/export.
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # ACLs disabled (modern S3 default). CloudTrail writes objects without an
+      # ACL, so the bucket policy must NOT require the bucket-owner-full-control
+      # ACL condition that older CloudTrail examples use.
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-logs
+            Status: Enabled
+            ExpirationInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-cloudtrail"
+        - Key: Project
+          Value: !Ref NamePrefix
+
+  TrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TrailBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # CloudTrail checks the bucket ACL before it starts delivering.
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt TrailBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${NamePrefix}-trail"
+          # Delivery of the log files. Scoped to this account's log prefix and,
+          # via aws:SourceArn, to this specific trail (confused-deputy guard).
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${TrailBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${NamePrefix}-trail"
+
+  # ---------------------------------------------------------------------------
+  # The trail itself. Multi-region + global service events => account-wide.
+  # ---------------------------------------------------------------------------
+  Trail:
+    Type: AWS::CloudTrail::Trail
+    # The bucket policy must grant CloudTrail write access before the trail can
+    # be created, or CreateTrail fails its delivery check.
+    DependsOn: TrailBucketPolicy
+    Properties:
+      TrailName: !Sub "${NamePrefix}-trail"
+      S3BucketName: !Ref TrailBucket
+      IsLogging: true
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      EnableLogFileValidation: true
+      # Advanced event selectors: one selector logs ALL management events; the
+      # data-event selectors log every event for the named resource type (no ARN
+      # filter => all buckets / all functions). Add more "AWS::<svc>::<type>"
+      # data selectors here (e.g. AWS::DynamoDB::Table) to widen data-event
+      # coverage as the lab grows.
+      AdvancedEventSelectors:
+        - Name: Log all management events
+          FieldSelectors:
+            - Field: eventCategory
+              Equals:
+                - Management
+        - Name: Log all S3 data events
+          FieldSelectors:
+            - Field: eventCategory
+              Equals:
+                - Data
+            - Field: resources.type
+              Equals:
+                - AWS::S3::Object
+        - Name: Log all Lambda data events
+          FieldSelectors:
+            - Field: eventCategory
+              Equals:
+                - Data
+            - Field: resources.type
+              Equals:
+                - AWS::Lambda::Function
+      Tags:
+        - Key: Project
+          Value: !Ref NamePrefix
+
+Outputs:
+  # Output key ends in "BucketName" so scripts/delete.sh empties it before the
+  # stack is torn down (CloudFormation cannot delete a non-empty bucket).
+  LogBucketName:
+    Description: CloudTrail log bucket name.
+    Value: !Ref TrailBucket
+    Export:
+      Name: cloudtrail-bucket-name
+  LogBucketArn:
+    Description: CloudTrail log bucket ARN.
+    Value: !GetAtt TrailBucket.Arn
+    Export:
+      Name: cloudtrail-bucket-arn
+  TrailArn:
+    Description: CloudTrail trail ARN.
+    Value: !GetAtt Trail.Arn
+    Export:
+      Name: cloudtrail-trail-arn
