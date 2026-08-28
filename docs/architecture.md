@@ -228,7 +228,7 @@ delivers to its own hardened bucket:
 |------|-------|
 | Trail | `sko26-cortexlab-trail` (multi-region, global service events) |
 | Bucket | Auto-generated bucket (export `<stackPrefix>-cloudtrail-bucket-arn`) |
-| New-file notifications | SNS topic `<stackPrefix>-cloudtrail-new-file-sns-topic-arn`; notified for every `s3:ObjectCreated:*` event in the trail bucket |
+| Delivery notifications | SNS topic `<stackPrefix>-cloudtrail-sns-topic-arn`; CloudTrail publishes to it each time it delivers a new log file |
 | Path | `AWSLogs/<account>/CloudTrail/<region>/...` |
 | Events | **all management events** + **all S3 object and Lambda data events** |
 | Integrity | log-file validation enabled (digest files are delivered alongside logs) |

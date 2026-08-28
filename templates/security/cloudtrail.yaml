@@ -24,11 +24,6 @@ Resources:
     Type: AWS::S3::Bucket
     # Name is auto-generated to avoid global-namespace collisions; the actual
     # name is published as an output/export.
-    # S3 validates it can publish to NewFileTopic when the bucket is created, so
-    # the topic policy granting s3.amazonaws.com must exist first. The !Ref in
-    # NotificationConfiguration only orders the topic (not its policy) before the
-    # bucket, so depend on the policy explicitly to avoid a create-time race.
-    DependsOn: NewFileTopicPolicy
     Properties:
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
@@ -55,10 +50,6 @@ Resources:
           Value: !Sub "${NamePrefix}-cloudtrail"
         - Key: Project
           Value: !Ref NamePrefix
-      NotificationConfiguration:
-        TopicConfigurations:
-          - Event: s3:ObjectCreated:*
-            Topic: !Ref NewFileTopic
 
   TrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -120,34 +111,6 @@ Resources:
               ArnLike:
                 aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${NamePrefix}-trail"
 
-  NewFileTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: !Sub "${NamePrefix}-cloudtrail-new-files"
-      Tags:
-        - Key: Name
-          Value: !Sub "${NamePrefix}-cloudtrail-new-files"
-        - Key: Project
-          Value: !Ref NamePrefix
-
-  NewFileTopicPolicy:
-    Type: AWS::SNS::TopicPolicy
-    Properties:
-      Topics:
-        - !Ref NewFileTopic
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: AllowCloudTrailBucketNotifications
-            Effect: Allow
-            Principal:
-              Service: s3.amazonaws.com
-            Action: sns:Publish
-            Resource: !Ref NewFileTopic
-            Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
-
   # ---------------------------------------------------------------------------
   # The trail itself. Multi-region + global service events => account-wide.
   # ---------------------------------------------------------------------------
@@ -158,7 +121,6 @@ Resources:
     DependsOn:
       - TrailBucketPolicy
       - TrailTopicPolicy
-      - NewFileTopicPolicy
     Properties:
       TrailName: !Sub "${NamePrefix}-trail"
       S3BucketName: !Ref TrailBucket
@@ -226,13 +188,3 @@ Outputs:
     Value: !Ref TrailTopic
     Export:
       Name: !Sub "${NamePrefix}-cloudtrail-sns-topic-arn"
-  NewFileTopicName:
-    Description: SNS topic name notified when a new CloudTrail log file is created.
-    Value: !GetAtt NewFileTopic.TopicName
-    Export:
-      Name: !Sub "${NamePrefix}-cloudtrail-new-file-sns-topic-name"
-  NewFileTopicArn:
-    Description: SNS topic ARN notified when a new CloudTrail log file is created.
-    Value: !Ref NewFileTopic
-    Export:
-      Name: !Sub "${NamePrefix}-cloudtrail-new-file-sns-topic-arn"

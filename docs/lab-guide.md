@@ -505,3 +505,9 @@ export AWS_REGION=ap-southeast-2
 | Linux VM | `/opt/cortexlab/scripts/fetch-cortex.sh` | Pull installer to VM |
 | Linux VM | `helm upgrade --install cortex .../<chart>` | Deploy Cortex agent |
 | Workstation | `scripts/delete.sh` | Tear everything down |
+
+**XQL to validate cloudtrail ingestion**
+
+dataset = amazon_aws_raw
+| filter recipientAccountId  = "AWSACCOUNTNUMBER"
+| limit 100
