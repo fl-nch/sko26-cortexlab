@@ -27,7 +27,8 @@ docs/          Architecture notes
 
 - **One template per stack**, grouping resources that share a lifecycle.
 - **Parameters live in `parameters/<stack>.json`**, separate from templates.
-- **Cross-stack wiring** via CloudFormation Exports/Imports (e.g. `vpc-id`).
+- **Cross-stack wiring** via CloudFormation Exports/Imports (e.g.
+  `<stackPrefix>-vpc-id`).
 - **Stacks are named** `<stackPrefix>-<stack>` (e.g. `sko26-grp0-cortexlab-vpc`).
 
 ## Prerequisites

@@ -27,7 +27,7 @@ flowchart TB
 
       subgraph PUB["Public subnet"]
         linux["Linux VM · Ubuntu 24.04 t3.medium<br/>SSM · kubectl + helm + docker<br/>/opt/cortexlab assets"]
-        win["Windows VM · 2022 t3.small<br/>SSM · RDP-over-SSM"]
+        win["Windows VM · 2022 t3.medium<br/>SSM · RDP-over-SSM"]
       end
 
       cp["EKS 1.34 control plane<br/>private-only API endpoint"]
@@ -138,8 +138,8 @@ On the Linux VM this opens a shell; on the Windows VM it opens a PowerShell
 session. Each VM stack outputs its instance ID and a ready-made connect command.
 The security groups have **no inbound rules**; outbound is open.
 
-Both VMs share the public subnet and the S3 transfer bucket. The Windows VM
-defaults to `t3.small`; the Linux VM defaults to `t3.medium`, sized to run
+Both VMs share the public subnet and the S3 transfer bucket. Both VMs default
+to `t3.medium`; the Linux VM is sized to run
 `cortexcli` container image scans against its local Docker daemon.
 
 ### RDP to the Windows VM
@@ -207,8 +207,8 @@ be shared with an upstream analytics system independently:
 
 | Log type | Bucket | Path |
 |----------|--------|------|
-| VPC Flow Logs | `sko26-cortexlab-flow-logs` (export `flow-log-bucket-arn`) | `AWSLogs/<account>/vpcflowlogs/...` |
-| Resolver DNS query logs | `sko26-cortexlab-dns-logs` (export `dns-log-bucket-arn`) | `AWSLogs/<account>/vpcdnsquerylogs/...` |
+| VPC Flow Logs | Auto-generated bucket (export `<stackPrefix>-flow-log-bucket-arn`) | `AWSLogs/<account>/vpcflowlogs/...` |
+| Resolver DNS query logs | Auto-generated bucket (export `<stackPrefix>-dns-log-bucket-arn`) | `AWSLogs/<account>/vpcdnsquerylogs/...` |
 
 Each bucket blocks all public access, uses SSE-S3, has ACLs disabled
 (`BucketOwnerEnforced`), and expires objects after `LogRetentionDays` (default
@@ -227,7 +227,8 @@ delivers to its own hardened bucket:
 | What | Value |
 |------|-------|
 | Trail | `sko26-cortexlab-trail` (multi-region, global service events) |
-| Bucket | `sko26-cortexlab-cloudtrail` (export `cloudtrail-bucket-arn`) |
+| Bucket | Auto-generated bucket (export `<stackPrefix>-cloudtrail-bucket-arn`) |
+| New-file notifications | SNS topic `<stackPrefix>-cloudtrail-new-file-sns-topic-arn`; notified for every `s3:ObjectCreated:*` event in the trail bucket |
 | Path | `AWSLogs/<account>/CloudTrail/<region>/...` |
 | Events | **all management events** + **all S3 object and Lambda data events** |
 | Integrity | log-file validation enabled (digest files are delivered alongside logs) |
@@ -267,10 +268,10 @@ kubectl":
 - *Network:* the `eks` stack adds ingress rules to the cluster security group
   (attached to both the control-plane ENIs and the nodes) allowing all traffic
   from each VM's security group — covering the API server (443) and pod/service
-  traffic. The VM stacks export their security group IDs (`linux-vm-sg-id`,
-  `win-vm-sg-id`) for this.
-- *Authorization:* each VM's instance role (exported as `linux-vm-role-arn` /
-  `win-vm-role-arn`) is mapped as a cluster admin via an EKS **access entry**
+  traffic. The VM stacks export their security group IDs (`<stackPrefix>-linux-vm-sg-id`,
+  `<stackPrefix>-win-vm-sg-id`) for this.
+- *Authorization:* each VM's instance role (exported as `<stackPrefix>-linux-vm-role-arn` /
+  `<stackPrefix>-win-vm-role-arn`) is mapped as a cluster admin via an EKS **access entry**
   (`AmazonEKSClusterAdminPolicy`). The cluster uses `API_AND_CONFIG_MAP`
   authentication mode, which access entries require.
 
@@ -333,7 +334,7 @@ and run:
 ```
 
 (The VM role already grants `GetObject`/`ListBucket` on the transfer bucket, and
-the bucket name comes from the existing `transfer-bucket-name` export — no new
+the bucket name comes from the existing `<stackPrefix>-transfer-bucket-name` export — no new
 IAM or exports. The boot-time pull is non-fatal if nothing is staged yet.)
 
 **Running exploits from the VMs.** The `eks` stack already allows *all* traffic
@@ -365,9 +366,9 @@ schedule.
 
 ## Cross-stack references
 
-`vpc` publishes `vpc-id`, `public-subnet-id`, `private-subnet-a-id`, and
-`private-subnet-b-id`. `network-logging` and the VM stacks import the VPC/public subnet;
-`eks` imports the private subnets plus the VM security group IDs and instance
+`vpc` publishes `<stackPrefix>-vpc-id`, `<stackPrefix>-public-subnet-id`,
+`<stackPrefix>-private-subnet-a-id`, and `<stackPrefix>-private-subnet-b-id`.
+`network-logging` and the VM stacks import the VPC/public subnet; `eks` imports the private subnets plus the VM security group IDs and instance
 role ARNs (exported by the VM stacks). Because of these imports, `eks` must be
 deleted before the VM stacks, and those before `vpc`. `scripts/delete.sh` tears
 down in reverse deploy order, which satisfies this.

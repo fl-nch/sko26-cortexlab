@@ -78,7 +78,8 @@ Resources:
     Type: AWS::EC2::FlowLog
     DependsOn: FlowLogBucketPolicy
     Properties:
-      ResourceId: !ImportValue vpc-id
+      ResourceId:
+        Fn::ImportValue: !Sub "${NamePrefix}-vpc-id"
       ResourceType: VPC
       TrafficType: ALL
       LogDestinationType: s3
@@ -159,26 +160,27 @@ Resources:
     Type: AWS::Route53Resolver::ResolverQueryLoggingConfigAssociation
     Properties:
       ResolverQueryLogConfigId: !Ref DnsQueryLogConfig
-      ResourceId: !ImportValue vpc-id
+      ResourceId:
+        Fn::ImportValue: !Sub "${NamePrefix}-vpc-id"
 
 Outputs:
   FlowLogBucketName:
     Description: VPC Flow Logs bucket name.
     Value: !Ref FlowLogBucket
     Export:
-      Name: flow-log-bucket-name
+      Name: !Sub "${NamePrefix}-flow-log-bucket-name"
   FlowLogBucketArn:
     Description: VPC Flow Logs bucket ARN.
     Value: !GetAtt FlowLogBucket.Arn
     Export:
-      Name: flow-log-bucket-arn
+      Name: !Sub "${NamePrefix}-flow-log-bucket-arn"
   DnsLogBucketName:
     Description: DNS query logs bucket name.
     Value: !Ref DnsLogBucket
     Export:
-      Name: dns-log-bucket-name
+      Name: !Sub "${NamePrefix}-dns-log-bucket-name"
   DnsLogBucketArn:
     Description: DNS query logs bucket ARN.
     Value: !GetAtt DnsLogBucket.Arn
     Export:
-      Name: dns-log-bucket-arn
+      Name: !Sub "${NamePrefix}-dns-log-bucket-arn"

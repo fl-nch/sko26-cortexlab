@@ -34,7 +34,9 @@ if [[ -z "$REGION" || -z "$STACK_PREFIX" ]]; then
 fi
 
 # Stack names in deploy order, then reversed for deletion (dependents first).
-mapfile -t FORWARD < <(cfg stacks | cut -d'|' -f1)
+# Use a read loop because macOS Bash 3.2 has no mapfile/readarray.
+FORWARD=()
+while IFS= read -r line; do FORWARD+=("$line"); done < <(cfg stacks | cut -d'|' -f1)
 STACKS=()
 for ((i=${#FORWARD[@]} - 1; i >= 0; i--)); do
   STACKS+=("${FORWARD[i]}")

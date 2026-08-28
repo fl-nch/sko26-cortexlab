@@ -88,8 +88,8 @@ Resources:
         AuthenticationMode: API_AND_CONFIG_MAP
       ResourcesVpcConfig:
         SubnetIds:
-          - !ImportValue private-subnet-a-id
-          - !ImportValue private-subnet-b-id
+          - Fn::ImportValue: !Sub "${NamePrefix}-private-subnet-a-id"
+          - Fn::ImportValue: !Sub "${NamePrefix}-private-subnet-b-id"
         # Private-only endpoint: reachable from inside the VPC (the VMs), not
         # the public internet. Flip EndpointPublicAccess to true if you need
         # kubectl straight from a workstation.
@@ -107,8 +107,8 @@ Resources:
       ClusterName: !Ref Cluster
       NodeRole: !GetAtt NodeRole.Arn
       Subnets:
-        - !ImportValue private-subnet-a-id
-        - !ImportValue private-subnet-b-id
+        - Fn::ImportValue: !Sub "${NamePrefix}-private-subnet-a-id"
+        - Fn::ImportValue: !Sub "${NamePrefix}-private-subnet-b-id"
       InstanceTypes:
         - !Ref NodeInstanceType
       AmiType: AL2023_x86_64_STANDARD
@@ -132,7 +132,8 @@ Resources:
     Properties:
       GroupId: !GetAtt Cluster.ClusterSecurityGroupId
       IpProtocol: "-1"
-      SourceSecurityGroupId: !ImportValue linux-vm-sg-id
+      SourceSecurityGroupId:
+        Fn::ImportValue: !Sub "${NamePrefix}-linux-vm-sg-id"
       Description: Allow all traffic from the Linux VM (kubectl + workloads)
 
   ClusterIngressFromWinVm:
@@ -140,7 +141,8 @@ Resources:
     Properties:
       GroupId: !GetAtt Cluster.ClusterSecurityGroupId
       IpProtocol: "-1"
-      SourceSecurityGroupId: !ImportValue win-vm-sg-id
+      SourceSecurityGroupId:
+        Fn::ImportValue: !Sub "${NamePrefix}-win-vm-sg-id"
       Description: Allow all traffic from the Windows VM (kubectl + workloads)
 
   # Reverse reachability: allow traffic from the cluster security group (worker
@@ -151,7 +153,8 @@ Resources:
   LinuxVmIngressFromCluster:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
-      GroupId: !ImportValue linux-vm-sg-id
+      GroupId:
+        Fn::ImportValue: !Sub "${NamePrefix}-linux-vm-sg-id"
       IpProtocol: "-1"
       SourceSecurityGroupId: !GetAtt Cluster.ClusterSecurityGroupId
       Description: Allow callbacks from EKS nodes/pods (reverse shells, JNDI)
@@ -159,7 +162,8 @@ Resources:
   WinVmIngressFromCluster:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
-      GroupId: !ImportValue win-vm-sg-id
+      GroupId:
+        Fn::ImportValue: !Sub "${NamePrefix}-win-vm-sg-id"
       IpProtocol: "-1"
       SourceSecurityGroupId: !GetAtt Cluster.ClusterSecurityGroupId
       Description: Allow callbacks from EKS nodes/pods (reverse shells, JNDI)
@@ -169,7 +173,8 @@ Resources:
     Type: AWS::EKS::AccessEntry
     Properties:
       ClusterName: !Ref Cluster
-      PrincipalArn: !ImportValue linux-vm-role-arn
+      PrincipalArn:
+        Fn::ImportValue: !Sub "${NamePrefix}-linux-vm-role-arn"
       Type: STANDARD
       AccessPolicies:
         - PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
@@ -180,7 +185,8 @@ Resources:
     Type: AWS::EKS::AccessEntry
     Properties:
       ClusterName: !Ref Cluster
-      PrincipalArn: !ImportValue win-vm-role-arn
+      PrincipalArn:
+        Fn::ImportValue: !Sub "${NamePrefix}-win-vm-role-arn"
       Type: STANDARD
       AccessPolicies:
         - PolicyArn: arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy
@@ -192,7 +198,7 @@ Outputs:
     Description: EKS cluster name.
     Value: !Ref Cluster
     Export:
-      Name: eks-cluster-name
+      Name: !Sub "${NamePrefix}-eks-cluster-name"
   ClusterEndpoint:
     Description: EKS API server endpoint (private).
     Value: !GetAtt Cluster.Endpoint
@@ -200,7 +206,7 @@ Outputs:
     Description: Cluster security group (control plane + nodes).
     Value: !GetAtt Cluster.ClusterSecurityGroupId
     Export:
-      Name: eks-cluster-sg-id
+      Name: !Sub "${NamePrefix}-eks-cluster-sg-id"
   UpdateKubeconfigCommand:
     Description: >-
       Run this from a VM (Linux VM recommended) to configure kubectl. The API

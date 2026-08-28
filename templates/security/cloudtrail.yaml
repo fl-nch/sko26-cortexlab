@@ -50,6 +50,10 @@ Resources:
           Value: !Sub "${NamePrefix}-cloudtrail"
         - Key: Project
           Value: !Ref NamePrefix
+      NotificationConfiguration:
+        TopicConfigurations:
+          - Event: s3:ObjectCreated:*
+            Topic: !Ref NewFileTopic
 
   TrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -68,6 +72,7 @@ Resources:
             Condition:
               StringEquals:
                 aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${NamePrefix}-trail"
+
           # Delivery of the log files. Scoped to this account's log prefix and,
           # via aws:SourceArn, to this specific trail (confused-deputy guard).
           - Sid: AWSCloudTrailWrite
@@ -80,6 +85,64 @@ Resources:
               StringEquals:
                 aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${NamePrefix}-trail"
 
+  TrailTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${NamePrefix}-cloudtrail"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-cloudtrail"
+        - Key: Project
+          Value: !Ref NamePrefix
+
+  TrailTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref TrailTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSCloudTrailPublish
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref TrailTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${NamePrefix}-trail"
+
+  NewFileTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${NamePrefix}-cloudtrail-new-files"
+      Tags:
+        - Key: Name
+          Value: !Sub "${NamePrefix}-cloudtrail-new-files"
+        - Key: Project
+          Value: !Ref NamePrefix
+
+  NewFileTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref NewFileTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudTrailBucketNotifications
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref NewFileTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
   # ---------------------------------------------------------------------------
   # The trail itself. Multi-region + global service events => account-wide.
   # ---------------------------------------------------------------------------
@@ -87,10 +150,14 @@ Resources:
     Type: AWS::CloudTrail::Trail
     # The bucket policy must grant CloudTrail write access before the trail can
     # be created, or CreateTrail fails its delivery check.
-    DependsOn: TrailBucketPolicy
+    DependsOn:
+      - TrailBucketPolicy
+      - TrailTopicPolicy
+      - NewFileTopicPolicy
     Properties:
       TrailName: !Sub "${NamePrefix}-trail"
       S3BucketName: !Ref TrailBucket
+      SnsTopicName: !Sub "${NamePrefix}-cloudtrail"
       IsLogging: true
       IsMultiRegionTrail: true
       IncludeGlobalServiceEvents: true
@@ -133,14 +200,34 @@ Outputs:
     Description: CloudTrail log bucket name.
     Value: !Ref TrailBucket
     Export:
-      Name: cloudtrail-bucket-name
+      Name: !Sub "${NamePrefix}-cloudtrail-bucket-name"
   LogBucketArn:
     Description: CloudTrail log bucket ARN.
     Value: !GetAtt TrailBucket.Arn
     Export:
-      Name: cloudtrail-bucket-arn
+      Name: !Sub "${NamePrefix}-cloudtrail-bucket-arn"
   TrailArn:
     Description: CloudTrail trail ARN.
     Value: !GetAtt Trail.Arn
     Export:
-      Name: cloudtrail-trail-arn
+      Name: !Sub "${NamePrefix}-cloudtrail-trail-arn"
+  TrailTopicName:
+    Description: SNS topic name attached to the CloudTrail trail.
+    Value: !GetAtt TrailTopic.TopicName
+    Export:
+      Name: !Sub "${NamePrefix}-cloudtrail-sns-topic-name"
+  TrailTopicArn:
+    Description: SNS topic ARN attached to the CloudTrail trail.
+    Value: !Ref TrailTopic
+    Export:
+      Name: !Sub "${NamePrefix}-cloudtrail-sns-topic-arn"
+  NewFileTopicName:
+    Description: SNS topic name notified when a new CloudTrail log file is created.
+    Value: !GetAtt NewFileTopic.TopicName
+    Export:
+      Name: !Sub "${NamePrefix}-cloudtrail-new-file-sns-topic-name"
+  NewFileTopicArn:
+    Description: SNS topic ARN notified when a new CloudTrail log file is created.
+    Value: !Ref NewFileTopic
+    Export:
+      Name: !Sub "${NamePrefix}-cloudtrail-new-file-sns-topic-arn"

@@ -51,7 +51,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:ListBucket
-                Resource: !ImportValue transfer-bucket-arn
+                Resource:
+                  Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-arn"
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -59,7 +60,8 @@ Resources:
                   - s3:DeleteObject
                 Resource: !Sub
                   - "${BucketArn}/*"
-                  - BucketArn: !ImportValue transfer-bucket-arn
+                    - BucketArn:
+                      Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-arn"
         # Lets "aws eks update-kubeconfig" fetch the cluster endpoint/CA. The
         # in-cluster RBAC still comes from the EKS access entry (cluster-admin);
         # this only authorizes the DescribeCluster API call.
@@ -86,7 +88,8 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: !Sub "${NamePrefix}-linux-vm outbound-only (SSM managed, no inbound)"
-      VpcId: !ImportValue vpc-id
+      VpcId:
+        Fn::ImportValue: !Sub "${NamePrefix}-vpc-id"
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
@@ -103,7 +106,8 @@ Resources:
       InstanceType: !Ref InstanceType
       ImageId: !Ref LatestAmiId
       IamInstanceProfile: !Ref InstanceProfile
-      SubnetId: !ImportValue public-subnet-id
+      SubnetId:
+        Fn::ImportValue: !Sub "${NamePrefix}-public-subnet-id"
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
       BlockDeviceMappings:
@@ -189,7 +193,8 @@ Resources:
               aws s3 cp --recursive "s3://${BucketName}/lab-assets/" /opt/cortexlab/ || true
               chmod -R a+rX /opt/cortexlab || true
               chmod +x /opt/cortexlab/scripts/*.sh 2>/dev/null || true
-            - BucketName: !ImportValue transfer-bucket-name
+            - BucketName:
+              Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-name"
               Region: !Ref "AWS::Region"
       Tags:
         - Key: Name
@@ -208,9 +213,9 @@ Outputs:
     Description: Instance security group ID (consumed by the EKS stack).
     Value: !Ref InstanceSecurityGroup
     Export:
-      Name: linux-vm-sg-id
+      Name: !Sub "${NamePrefix}-linux-vm-sg-id"
   InstanceRoleArn:
     Description: Instance IAM role ARN (mapped into EKS as a cluster admin).
     Value: !GetAtt InstanceRole.Arn
     Export:
-      Name: linux-vm-role-arn
+      Name: !Sub "${NamePrefix}-linux-vm-role-arn"

@@ -60,7 +60,7 @@ aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER_NAME"
 case "$ACTION" in
   apply)
     kubectl apply -f "$MANIFEST"
-    kubectl -n gocortexbrokenbank rollout status deploy/gocortexbrokenbank --timeout=180s || true
+    kubectl -n gocortexbrokenbank rollout status deploy/gocortexbrokenbank --timeout=180s
     echo
     echo ">> Node private IPs (target any one of these from the VMs):"
     kubectl get nodes -o jsonpath='{range .items[*]}{"   "}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'

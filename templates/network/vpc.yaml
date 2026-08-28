@@ -184,19 +184,19 @@ Outputs:
     Description: VPC ID for cross-stack imports.
     Value: !Ref Vpc
     Export:
-      Name: vpc-id
+      Name: !Sub "${NamePrefix}-vpc-id"
   PublicSubnetId:
     Description: Public subnet ID for cross-stack imports.
     Value: !Ref PublicSubnet
     Export:
-      Name: public-subnet-id
+      Name: !Sub "${NamePrefix}-public-subnet-id"
   PrivateSubnetAId:
     Description: First private (EKS) subnet ID for cross-stack imports.
     Value: !Ref PrivateSubnetA
     Export:
-      Name: private-subnet-a-id
+      Name: !Sub "${NamePrefix}-private-subnet-a-id"
   PrivateSubnetBId:
     Description: Second private (EKS) subnet ID for cross-stack imports.
     Value: !Ref PrivateSubnetB
     Export:
-      Name: private-subnet-b-id
+      Name: !Sub "${NamePrefix}-private-subnet-b-id"

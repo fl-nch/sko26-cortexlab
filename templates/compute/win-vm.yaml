@@ -43,7 +43,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:ListBucket
-                Resource: !ImportValue transfer-bucket-arn
+                Resource:
+                  Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-arn"
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -51,7 +52,8 @@ Resources:
                   - s3:DeleteObject
                 Resource: !Sub
                   - "${BucketArn}/*"
-                  - BucketArn: !ImportValue transfer-bucket-arn
+                    - BucketArn:
+                      Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-arn"
       Tags:
         - Key: Project
           Value: !Ref NamePrefix
@@ -68,7 +70,8 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: !Sub "${NamePrefix}-win-vm outbound-only (SSM managed, no inbound)"
-      VpcId: !ImportValue vpc-id
+      VpcId:
+        Fn::ImportValue: !Sub "${NamePrefix}-vpc-id"
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
@@ -85,7 +88,8 @@ Resources:
       InstanceType: !Ref InstanceType
       ImageId: !Ref LatestAmiId
       IamInstanceProfile: !Ref InstanceProfile
-      SubnetId: !ImportValue public-subnet-id
+      SubnetId:
+        Fn::ImportValue: !Sub "${NamePrefix}-public-subnet-id"
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
       Tags:
@@ -114,9 +118,9 @@ Outputs:
     Description: Instance security group ID (consumed by the EKS stack).
     Value: !Ref InstanceSecurityGroup
     Export:
-      Name: win-vm-sg-id
+      Name: !Sub "${NamePrefix}-win-vm-sg-id"
   InstanceRoleArn:
     Description: Instance IAM role ARN (mapped into EKS as a cluster admin).
     Value: !GetAtt InstanceRole.Arn
     Export:
-      Name: win-vm-role-arn
+      Name: !Sub "${NamePrefix}-win-vm-role-arn"

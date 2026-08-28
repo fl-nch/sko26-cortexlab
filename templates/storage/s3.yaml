@@ -36,9 +36,9 @@ Outputs:
     Description: Transfer bucket name.
     Value: !Ref TransferBucket
     Export:
-      Name: transfer-bucket-name
+      Name: !Sub "${NamePrefix}-transfer-bucket-name"
   BucketArn:
     Description: Transfer bucket ARN.
     Value: !GetAtt TransferBucket.Arn
     Export:
-      Name: transfer-bucket-arn
+      Name: !Sub "${NamePrefix}-transfer-bucket-arn"
