@@ -43,6 +43,7 @@ flowchart TB
     subgraph S3G["S3 · private, encrypted"]
       transfer[(transfer bucket<br/>lab-assets/)]
       logs[(flow-logs + dns-logs)]
+      trail[(cloudtrail<br/>mgmt + data events)]
     end
 
     operator ==>|SSM Session Manager| linux
@@ -65,6 +66,7 @@ flowchart TB
     n1 -. "log shipping (not wired)" .-> xsiam
 
     VPC -. "VPC flow logs + Route53 DNS query logs" .-> logs
+    operator -. "all AWS API calls (mgmt + data)" .-> trail
 ```
 
 A plain-text rendering of the same topology lives at
@@ -105,6 +107,7 @@ A plain-text rendering of the same topology lives at
 |---------|----------|---------|------------|
 | vpc     | `templates/network/vpc.yaml` | VPC, internet gateway, public subnet, two private subnets, NAT gateway, routing. | — |
 | logging | `templates/network/logging.yaml` | VPC Flow Logs and Route 53 Resolver DNS query logging, each to its own hardened S3 bucket. | vpc |
+| cloudtrail | `templates/security/cloudtrail.yaml` | Multi-region CloudTrail trail logging all management + S3/Lambda data events to its own hardened S3 bucket. | — |
 | transfer-bucket | `templates/storage/s3.yaml`  | S3 file-transfer relay bucket. | — |
 | linux-vm | `templates/compute/linux-vm.yaml` | Linux (Ubuntu 24.04) EC2 instance + SSM instance role with S3 access; first boot installs AWS CLI, Docker, kubectl, Helm. Ubuntu (not AL2023) so cortexcli image scans are supported. | vpc, transfer-bucket |
 | win-vm  | `templates/compute/win-vm.yaml` | Windows Server 2022 EC2 instance in the same subnet + SSM instance role with S3 access. | vpc, transfer-bucket |
@@ -216,6 +219,35 @@ destination.
 
 `scripts/delete.sh` empties both buckets (like the transfer bucket) before
 deleting the stack, since CloudFormation cannot remove a non-empty bucket.
+
+## Account audit logging (CloudTrail)
+
+The `cloudtrail` stack provisions a **multi-region** CloudTrail trail that
+delivers to its own hardened bucket:
+
+| What | Value |
+|------|-------|
+| Trail | `sko26-cortexlab-trail` (multi-region, global service events) |
+| Bucket | `sko26-cortexlab-cloudtrail` (export `cloudtrail-bucket-arn`) |
+| Path | `AWSLogs/<account>/CloudTrail/<region>/...` |
+| Events | **all management events** + **all S3 object and Lambda data events** |
+| Integrity | log-file validation enabled (digest files are delivered alongside logs) |
+
+The bucket mirrors the `logging` buckets: all public access blocked, SSE-S3,
+ACLs disabled (`BucketOwnerEnforced`), objects expire after `LogRetentionDays`
+(the stack default is 90; `parameters/cloudtrail.json` overrides it to **15** to
+keep lab cost down). The bucket policy grants only `cloudtrail.amazonaws.com`,
+scoped by `aws:SourceArn` to this trail. Data-event coverage is expressed with
+advanced event selectors (management + one selector per data-event resource
+type); add more `resources.type` selectors in the template to widen it.
+
+Data events log object-level activity across **every** bucket in the account —
+including the transfer and log buckets — so expect volume. `scripts/delete.sh`
+empties the trail bucket before deleting the stack.
+
+> **Shared-account note:** each region allows at most 5 trails. If many groups
+> deploy account-wide trails into the *same* account, they will hit that limit;
+> in a shared account, only one group should own the `cloudtrail` stack.
 
 ## EKS cluster
 
@@ -344,8 +376,8 @@ down in reverse deploy order, which satisfies this.
 ## Deploy order
 
 The deploy is split in two. `scripts/deploy-part1.sh` deploys everything except
-EKS, in registry order — `vpc` → `logging` → `transfer-bucket` → `linux-vm` →
-`win-vm`. `scripts/deploy-part2.sh` then deploys `eks` on its own. The split
+EKS, in registry order — `vpc` → `logging` → `cloudtrail` → `transfer-bucket` →
+`linux-vm` → `win-vm`. `scripts/deploy-part2.sh` then deploys `eks` on its own. The split
 exists because `eks` takes ~15 minutes and imports the private subnets (from
 `vpc`) and the VM security groups and roles (from the VM stacks), so it must run
 last. `scripts/delete.sh` still tears down all stacks in reverse deploy order.
