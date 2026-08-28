@@ -105,9 +105,9 @@ A plain-text rendering of the same topology lives at
 
 | Stack   | Template | Purpose | Depends on |
 |---------|----------|---------|------------|
-| vpc     | `templates/network/vpc.yaml` | VPC, internet gateway, public subnet, two private subnets, NAT gateway, routing. | — |
-| logging | `templates/network/logging.yaml` | VPC Flow Logs and Route 53 Resolver DNS query logging, each to its own hardened S3 bucket. | vpc |
 | cloudtrail | `templates/security/cloudtrail.yaml` | Multi-region CloudTrail trail logging all management + S3/Lambda data events to its own hardened S3 bucket. | — |
+| vpc     | `templates/network/vpc.yaml` | VPC, internet gateway, public subnet, two private subnets, NAT gateway, routing. | — |
+| network-logging | `templates/network/logging.yaml` | VPC Flow Logs and Route 53 Resolver DNS query logging, each to its own hardened S3 bucket. | vpc |
 | transfer-bucket | `templates/storage/s3.yaml`  | S3 file-transfer relay bucket. | — |
 | linux-vm | `templates/compute/linux-vm.yaml` | Linux (Ubuntu 24.04) EC2 instance + SSM instance role with S3 access; first boot installs AWS CLI, Docker, kubectl, Helm. Ubuntu (not AL2023) so cortexcli image scans are supported. | vpc, transfer-bucket |
 | win-vm  | `templates/compute/win-vm.yaml` | Windows Server 2022 EC2 instance in the same subnet + SSM instance role with S3 access. | vpc, transfer-bucket |
@@ -196,14 +196,13 @@ aws s3 cp ./file.tar.gz "s3://$BUCKET/tmp/"
 aws s3 cp "s3://$BUCKET/tmp/file.tar.gz" .
 ```
 
-The bucket has versioning enabled and blocks all public access. Because it is
-versioned, it must be emptied before the stack can be deleted — `scripts/delete.sh`
-does this automatically (it removes all object versions and delete markers
-before deleting the `storage` stack).
+The bucket blocks all public access and must be emptied before the stack can be
+deleted. `scripts/delete.sh` does this automatically before deleting the
+`storage` stack.
 
 ## Logging
 
-The `logging` stack sends each log type to its own hardened bucket, so they can
+The `network-logging` stack sends each log type to its own hardened bucket, so they can
 be shared with an upstream analytics system independently:
 
 | Log type | Bucket | Path |
@@ -233,7 +232,7 @@ delivers to its own hardened bucket:
 | Events | **all management events** + **all S3 object and Lambda data events** |
 | Integrity | log-file validation enabled (digest files are delivered alongside logs) |
 
-The bucket mirrors the `logging` buckets: all public access blocked, SSE-S3,
+The bucket mirrors the `network-logging` buckets: all public access blocked, SSE-S3,
 ACLs disabled (`BucketOwnerEnforced`), objects expire after `LogRetentionDays`
 (the stack default is 90; `parameters/cloudtrail.json` overrides it to **15** to
 keep lab cost down). The bucket policy grants only `cloudtrail.amazonaws.com`,
@@ -367,7 +366,7 @@ schedule.
 ## Cross-stack references
 
 `vpc` publishes `vpc-id`, `public-subnet-id`, `private-subnet-a-id`, and
-`private-subnet-b-id`. `logging` and the VM stacks import the VPC/public subnet;
+`private-subnet-b-id`. `network-logging` and the VM stacks import the VPC/public subnet;
 `eks` imports the private subnets plus the VM security group IDs and instance
 role ARNs (exported by the VM stacks). Because of these imports, `eks` must be
 deleted before the VM stacks, and those before `vpc`. `scripts/delete.sh` tears
@@ -376,7 +375,7 @@ down in reverse deploy order, which satisfies this.
 ## Deploy order
 
 The deploy is split in two. `scripts/deploy-part1.sh` deploys everything except
-EKS, in registry order — `vpc` → `logging` → `cloudtrail` → `transfer-bucket` →
+EKS, in registry order — `cloudtrail` → `vpc` → `network-logging` → `transfer-bucket` →
 `linux-vm` → `win-vm`. `scripts/deploy-part2.sh` then deploys `eks` on its own. The split
 exists because `eks` takes ~15 minutes and imports the private subnets (from
 `vpc`) and the VM security groups and roles (from the VM stacks), so it must run

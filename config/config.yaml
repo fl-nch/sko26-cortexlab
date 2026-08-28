@@ -12,15 +12,15 @@ tags:
 # Stacks are deployed in listed order (foundational first).
 # Each entry maps a stack name to its template and parameter file.
 stacks:
-  - name: vpc
-    template: templates/network/vpc.yaml
-    parameters: parameters/vpc.json
-  - name: logging
-    template: templates/network/logging.yaml
-    parameters: parameters/logging.json
   - name: cloudtrail
     template: templates/security/cloudtrail.yaml
     parameters: parameters/cloudtrail.json
+  - name: vpc
+    template: templates/network/vpc.yaml
+    parameters: parameters/vpc.json
+  - name: network-logging
+    template: templates/network/logging.yaml
+    parameters: parameters/logging.json
   - name: transfer-bucket
     template: templates/storage/s3.yaml
     parameters: parameters/s3.json

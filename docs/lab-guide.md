@@ -170,7 +170,7 @@ otherwise falls back to AWS-side validation.
 
 ### 5. Deploy Part 1
 
-This deploys everything **except** EKS — VPC, logging, the transfer bucket, and
+This deploys everything **except** EKS — CloudTrail, VPC, network logging, the transfer bucket, and
 the Linux and Windows VMs — and stages the lab assets into the transfer bucket so
 the Linux VM picks them up on boot.
 
@@ -179,7 +179,7 @@ scripts/deploy-part1.sh
 ```
 
 This takes a few minutes. You'll see each stack deploy in order:
-`vpc → logging → transfer-bucket → linux-vm → win-vm`, then `>> Done.`
+`cloudtrail → vpc → network-logging → transfer-bucket → linux-vm → win-vm`, then `>> Done.`
 
 Verify in the AWS console (CloudFormation) or from the CLI:
 
@@ -419,8 +419,8 @@ a live exploit produced a runtime detection.
 ## Teardown
 
 When the lab is done, tear everything down from your workstation (creds
-exported). This deletes all stacks in reverse order and empties the versioned S3
-buckets first. EKS deletion also takes ~15 minutes.
+exported). This deletes all stacks in reverse order and empties the S3 buckets
+first. EKS deletion also takes ~15 minutes.
 
 ```bash
 cd sko26-cortexlab
@@ -500,7 +500,7 @@ export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
 export AWS_REGION=ap-southeast-2
 ```
 
-**Stacks** (prefix `sko26-grpNN-cortexlab-`): `vpc`, `logging`,
+**Stacks** (prefix `sko26-grpNN-cortexlab-`): `cloudtrail`, `vpc`, `network-logging`,
 `transfer-bucket`, `linux-vm`, `win-vm`, `eks`.
 
 **Key commands:**

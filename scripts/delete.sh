@@ -40,30 +40,12 @@ for ((i=${#FORWARD[@]} - 1; i >= 0; i--)); do
   STACKS+=("${FORWARD[i]}")
 done
 
-# Empty a versioned bucket (objects, all versions, and delete markers) so the
-# owning stack can be deleted. CloudFormation refuses to delete a non-empty
-# bucket, and "aws s3 rm --recursive" alone leaves old versions behind.
+# Empty a non-versioned bucket so the owning stack can be deleted.
 empty_bucket() {
   local bucket="$1"
   [[ -z "$bucket" || "$bucket" == "None" ]] && return 0
-  echo ">> Emptying bucket ${bucket} (including versions)"
-  while :; do
-    local batch count
-    batch=$(aws s3api list-object-versions --region "$REGION" --bucket "$bucket" \
-      --max-items 200 --output json 2>/dev/null \
-      | "$PY" -c '
-import json, sys
-raw = sys.stdin.read().strip()
-data = (json.loads(raw) if raw else {}) or {}
-items = (data.get("Versions") or []) + (data.get("DeleteMarkers") or [])
-objs = [{"Key": i["Key"], "VersionId": i["VersionId"]} for i in items]
-print(json.dumps({"Objects": objs, "Quiet": True}))
-')
-    count=$(printf '%s' "$batch" | "$PY" -c 'import json,sys; print(len(json.load(sys.stdin)["Objects"]))')
-    [[ "$count" -eq 0 ]] && break
-    aws s3api delete-objects --region "$REGION" --bucket "$bucket" --delete "$batch" >/dev/null
-    echo "   removed ${count} object version(s)"
-  done
+  echo ">> Emptying bucket ${bucket}"
+  aws s3 rm "s3://${bucket}/" --region "$REGION" --recursive >/dev/null
 }
 
 read -r -p "Delete stacks in ${REGION}? [y/N] " confirm
