@@ -194,7 +194,7 @@ Resources:
               chmod -R a+rX /opt/cortexlab || true
               chmod +x /opt/cortexlab/scripts/*.sh 2>/dev/null || true
             - BucketName:
-              Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-name"
+                Fn::ImportValue: !Sub "${NamePrefix}-transfer-bucket-name"
               Region: !Ref "AWS::Region"
       Tags:
         - Key: Name
