@@ -149,14 +149,18 @@ Resources:
               # docker.io package creates that group), so group membership is
               # sufficient. The catch: ssm-user is created lazily on first SSM
               # session, which is too late for a boot-time usermod. So pre-create
-              # ssm-user here and add it to the group before any session starts;
-              # SSM Agent reuses an existing ssm-user and still grants it
-              # passwordless sudo. Also add the default "ubuntu" cloud user.
+              # ssm-user here and add it to the group before any session starts.
+              # Pre-creating it also means the SSM Agent's own first-session setup
+              # (which normally grants a freshly-created ssm-user NOPASSWD sudo)
+              # never runs, so grant that explicitly ourselves instead of relying
+              # on the agent. Also add the default "ubuntu" cloud user.
               # (There is no ec2-user on Ubuntu; that is an Amazon Linux account.)
               groupadd -f docker
               useradd -m -s /bin/bash ssm-user 2>/dev/null || true
               usermod -aG docker ssm-user
               usermod -aG docker ubuntu 2>/dev/null || true
+              echo "ssm-user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-ssm-user
+              chmod 0440 /etc/sudoers.d/90-ssm-user
 
               # AWS CLI v2 (Ubuntu has no aws CLI preinstalled; installs to
               # /usr/local/bin/aws).

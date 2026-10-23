@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cortex Lab Runbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◎</span>
+        <span class="brand-name">Cortex Lab Runbook</span>
+      </div>
+      <div class="topbar-status" id="topbar-status">
+        <span class="status-chip" id="chip-prefix">prefix: —</span>
+        <span class="status-chip" id="chip-identity">AWS: not connected</span>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="rail" id="rail"></nav>
+      <main class="stage" id="stage"></main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

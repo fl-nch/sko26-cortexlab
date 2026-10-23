@@ -19,6 +19,31 @@ and secures it with **Cortex Cloud** (KSPM + realtime protection).
 
 ---
 
+## Optional: run this guide as an app
+
+Everything below also works as a local web app instead of copy-pasting
+commands from this file. `app/` turns this guide into a step-by-step
+runbook — one step per screen, each with an explanation, a **Run** button for
+the automatable steps (tool check, credentials, `validate.sh`,
+`deploy-part1.sh`, `deploy-part2.sh`, uploading the Cortex installer files,
+`delete.sh`) with live output, and a clearly marked **"Do this yourself"**
+callout for anything that genuinely needs a console or an interactive shell
+(Cortex Cloud onboarding, SSM sessions, RDP) — with instance IDs, the cluster
+name and the bucket name resolved for you where possible.
+
+```bash
+cd app
+npm install
+npm start
+```
+
+Then open http://localhost:4848. AWS credentials you paste in are held only in
+the app's local server process for that session — never written to disk. If
+you also use a separate terminal for the manual steps (SSM sessions, RDP),
+export the same credentials there too (step 1 below).
+
+---
+
 ## Working as a group of two or 4
 
 You share one AWS account and one Cortex tenant view, so **only one person runs
@@ -71,9 +96,9 @@ Use **Git Bash** for every command in this guide (not PowerShell or CMD).
        default `%PROGRAMFILES%\Amazon\SessionManagerPlugin\bin\` location.
 4. **Python 3** — https://www.python.org/downloads/windows/
    ✅ On the first installer screen, tick **"Add python.exe to PATH."**
-5. **cfn-lint** — in Git Bash:
+5. **cfn-lint and PyYAML** — in Git Bash:
    ```bash
-   python -m pip install --user cfn-lint
+   python -m pip install --user cfn-lint pyyaml
    ```
 
 > Tip: after installing, **close and reopen Git Bash** so the new tools are on
@@ -89,7 +114,7 @@ Use the built-in **Terminal** (or iTerm). The easiest path is [Homebrew](https:/
 
 brew install awscli python git
 brew install --cask session-manager-plugin
-python3 -m pip install --user cfn-lint
+python3 -m pip install --user cfn-lint pyyaml
 ```
 
 `git` is also available via Xcode Command Line Tools if you prefer
@@ -343,59 +368,85 @@ curl "http://$NODE:30999/exploit-app/execute?cmd=id"
 Keep note of what you ran — you'll look for these in Cortex after the agent is
 deployed.
 
-### 4. Generate the Cortex Helm installer (KSPM + realtime protection)
+### 4. Generate the Cortex Kubernetes connector (KSPM + realtime protection)
 
-In the **Cortex Cloud console**, generate the Kubernetes / Helm installer for
-this cluster with **both** KSPM (posture) and **runtime / realtime protection**
-enabled:
+In the **Cortex Cloud console**, open the **Kubernetes connect** panel and
+generate a connector for this cluster with **both** posture management (KSPM)
+and **realtime protection** enabled. Unlike a typical Helm repo, Cortex doesn't
+hand you a `.tgz` chart here — it gives you two small files and the exact
+commands to pull the chart straight from Cortex's own registry:
 
-1. Go to the Kubernetes onboarding / defenders (agents) section.
-2. Choose **Helm** as the deployment method.
-3. Enable **KSPM** and **runtime (realtime) protection**.
-4. Download the generated Helm chart (`.tgz`), plus any separate values file.
+1. Open Kubernetes connect and confirm both **Posture management** and
+   **Realtime protection** are enabled for the profile.
+2. Download the two generated files: `values.yaml` and `auth.json`.
+3. Copy the exact `helm registry login` command (step 2 of the wizard) and
+   `helm upgrade --install` command (step 3) shown on screen — don't retype
+   them from memory. The registry host, image path, namespace and filenames
+   are generated per tenant/profile and will look different for every group.
 
-### 5. Upload the installer to the transfer bucket
+### 5. Upload the installer files to the transfer bucket
 
 SSM has no file copy, so relay through the transfer bucket. From **your
-workstation** (where you downloaded the chart), find the bucket and upload into
-its pre-created `cortex/` folder:
+workstation** (where you downloaded the files), find the bucket and upload
+both into its pre-created `cortex/` folder:
 
 ```bash
 BUCKET=$(aws cloudformation describe-stacks \
   --stack-name sko26-grpNN-cortexlab-transfer-bucket \
   --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
 
-aws s3 cp ./<cortex-installer>.tgz "s3://$BUCKET/cortex/"
-# if you also have a values file:
-aws s3 cp ./<values>.yaml "s3://$BUCKET/cortex/"
+aws s3 cp ./<profile-name>.values.yaml "s3://$BUCKET/cortex/"
+aws s3 cp ./<profile-name>.auth.json "s3://$BUCKET/cortex/"
 ```
 ### 6. Fetch and install on the cluster (on the Linux VM)
 
-Back in the Linux VM SSM session, pull the installer down and deploy with Helm:
+Back in the Linux VM SSM session, pull the two files down and run Cortex's own
+login + install commands against them:
 
 ```bash
-/opt/cortexlab/scripts/fetch-cortex.sh          # downloads s3://<bucket>/cortex/ -> /opt/cortexlab/cortex/
-ls /opt/cortexlab/cortex/
-
-helm upgrade --install cortex /opt/cortexlab/cortex/<chart>.tgz [-f /opt/cortexlab/cortex/<values>.yaml]
+/opt/cortexlab/scripts/fetch-cortex.sh          # downloads s3://<bucket>/cortex/ -> /tmp/cortex
+cd /tmp/cortex
+ls                                               # values.yaml and auth.json should be here
 ```
 
-Confirm the agent is running (namespace name depends on the chart — often
-`cortex` or similar):
+> `/tmp` is the destination on purpose: `/opt/cortexlab` is staged read-only
+> for the SSM session, so the script downloads into `/tmp/cortex` instead,
+> which any user can always write to.
+
+Now run the two commands Cortex showed you in step 4 above, **from inside this
+directory** (the console's copy-paste command assumes the files are in your
+current directory, which is why we `cd` first rather than editing every path):
 
 ```bash
-kubectl get pods -A | grep -i cortex
+helm registry login <registry-host> \
+  --username _json_key --password-stdin < <auth>.json
+
+helm upgrade --install <release> \
+  oci://<registry-host>/<path>/konnector-launcher \
+  --wait-for-jobs --create-namespace --namespace <namespace> \
+  --values <values>.yaml \
+  --set-file konnector-upgrader.rawValuesContent=<values>.yaml
 ```
 
-You should see the defender/agent pods (typically a DaemonSet, one per node)
-reach `Running`.
+Confirm the agent is running (the namespace is whatever the wizard used, e.g.
+`panw`):
+
+```bash
+kubectl get pods -n <namespace>
+```
+
+You should see the connector pod(s) reach `Running`.
 
 ### 7. Verify in the Cortex Cloud console
 
-1. **KSPM:** within a few minutes the cluster should appear under Kubernetes
+1. **Deployment:** back in the Kubernetes connect wizard, click **I'm done**
+   and confirm you see **Status: Deployed**. An initial scan starts
+   automatically, and the connector appears under **Data Sources → Kubernetes
+   → Kubernetes Connectors**.
+2. **KSPM:** within a few minutes the cluster should appear under Kubernetes
    posture, with configuration findings against the intentionally-weak app
    (privileged/hostPath/exposed services, hardcoded secrets, etc.).
-2. **Realtime protection:** re-run one of the exploits from step 3 (e.g. the
+3. **Realtime protection:** re-run one of the exploits from step 3 (e.g. the
    Tomcat RCE `curl`) and look for a corresponding **runtime detection /
    incident** in Cortex. Point out the process/exec chain the agent captured.
 
@@ -501,9 +552,9 @@ export AWS_REGION=ap-southeast-2
 | Workstation | `scripts/deploy-part2.sh` | Deploy EKS (~15 min) |
 | Workstation | `aws ssm start-session --target <id>` | Shell into a VM |
 | Linux VM | `/opt/cortexlab/scripts/deploy-app.sh` | Deploy vulnerable app |
-| Workstation | `aws s3 cp <chart> s3://<bucket>/cortex/` | Stage Cortex installer |
-| Linux VM | `/opt/cortexlab/scripts/fetch-cortex.sh` | Pull installer to VM |
-| Linux VM | `helm upgrade --install cortex .../<chart>` | Deploy Cortex agent |
+| Workstation | `aws s3 cp <file> s3://<bucket>/cortex/` | Stage values.yaml / auth.json |
+| Linux VM | `/opt/cortexlab/scripts/fetch-cortex.sh` | Pull installer files to `/tmp/cortex` |
+| Linux VM | `helm registry login ... && helm upgrade --install ... oci://...` | Deploy Cortex agent |
 | Workstation | `scripts/delete.sh` | Tear everything down |
 
 **XQL to validate cloudtrail ingestion**

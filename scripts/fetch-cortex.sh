@@ -16,13 +16,17 @@
 # Usage:
 #   scripts/fetch-cortex.sh          # sync s3://<bucket>/cortex/ -> ${DEST}
 #
-# Env overrides: TRANSFER_BUCKET, AWS_REGION, DEST (default /opt/cortexlab/cortex)
+# Env overrides: TRANSFER_BUCKET, AWS_REGION, DEST (default /tmp/cortex)
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="${ROOT_DIR}/config/config.yaml"
-DEST="${DEST:-/opt/cortexlab/cortex}"
+# /tmp rather than /opt/cortexlab/cortex: /opt/cortexlab is staged read-only
+# (chmod a+rX) for ssm-user by the VM's boot script, so writing under it needs
+# elevated privileges ssm-user doesn't reliably have. /tmp is always
+# world-writable (sticky bit), so this needs no sudo/docker workaround at all.
+DEST="${DEST:-/tmp/cortex}"
 
 # Region: env, else config/config.yaml.
 REGION="${AWS_REGION:-}"
@@ -49,6 +53,7 @@ if [[ -z "$BUCKET" ]]; then
 fi
 
 mkdir -p "$DEST"
+
 echo ">> Downloading s3://${BUCKET}/cortex/ -> ${DEST}"
 aws s3 sync --region "$REGION" "s3://${BUCKET}/cortex/" "$DEST"
 

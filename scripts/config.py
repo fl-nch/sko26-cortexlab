@@ -13,7 +13,11 @@ Usage:
                                                line per stack, in deploy order
 """
 import sys
-import yaml
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("PyYAML is required: run  python -m pip install --user pyyaml")
 
 
 def main():

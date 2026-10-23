@@ -6,6 +6,10 @@ setup, organized by stack.
 > **Running the lab?** Start with the [Lab Guide](docs/lab-guide.md) — a
 > step-by-step walkthrough for the single-session, groups-of-two-or-four format
 > (prerequisites, deploy, Cortex Cloud onboarding, KSPM + realtime protection).
+>
+> Prefer a guided UI over copy-pasting commands? See
+> [Run the guided app](#run-the-guided-app) below — it walks through the same
+> steps with inputs, a Run button and live output for the automatable parts.
 
 ## Layout
 
@@ -89,19 +93,30 @@ manifest and deploy script to the transfer bucket and the VM pulls them to
 /opt/cortexlab/scripts/deploy-app.sh delete   # remove it
 ```
 
-Deploy the Cortex Helm installer. Generate the Kubernetes/Helm installer in the
-Cortex console, upload it to the transfer bucket's `cortex/` folder (pre-created
-by `deploy-part1.sh`) from your workstation:
+Deploy the Cortex Kubernetes connector. Generate it in the Cortex console's
+Kubernetes connect panel — this gives you two files (`values.yaml`,
+`auth.json`), not a Helm chart archive — and upload both to the transfer
+bucket's `cortex/` folder (pre-created by `deploy-part1.sh`) from your
+workstation:
 
 ```bash
-aws s3 cp <installer> s3://<transfer-bucket>/cortex/
+aws s3 cp <values>.yaml s3://<transfer-bucket>/cortex/
+aws s3 cp <auth>.json s3://<transfer-bucket>/cortex/
 ```
 
-Then, in an SSM session on the Linux VM, fetch it and deploy with helm:
+Then, in an SSM session on the Linux VM, fetch them and run the `helm registry
+login` + `helm upgrade --install ... oci://...` commands the console showed
+you (copy those verbatim — the registry host, image path and namespace are
+generated per tenant):
 
 ```bash
-/opt/cortexlab/scripts/fetch-cortex.sh    # -> /opt/cortexlab/cortex/
-helm upgrade --install cortex /opt/cortexlab/cortex/<chart> [-f <values>]
+/opt/cortexlab/scripts/fetch-cortex.sh    # -> /tmp/cortex (not /opt/cortexlab: that's read-only for the SSM session)
+cd /tmp/cortex
+helm registry login <registry-host> --username _json_key --password-stdin < <auth>.json
+helm upgrade --install <release> oci://<registry-host>/<path>/konnector-launcher \
+  --wait-for-jobs --create-namespace --namespace <namespace> \
+  --values <values>.yaml \
+  --set-file konnector-upgrader.rawValuesContent=<values>.yaml
 ```
 
 Open an RDP desktop on the Windows VM (over SSM, no inbound rules). Run this
@@ -129,6 +144,34 @@ Tear down:
 ```bash
 scripts/delete.sh
 ```
+
+## Run the guided app
+
+`app/` is a local web app that turns the [Lab Guide](docs/lab-guide.md) into a
+step-by-step runbook instead of a wall of commands to copy-paste. One step per
+screen, in order, each with:
+
+- an explanation of what the step does and why,
+- a **Run** button for the automatable steps (tool check, credentials,
+  `validate.sh`, `deploy-part1.sh`, `deploy-part2.sh`, uploading the Cortex
+  installer files, `delete.sh`) with live output streamed into the page, and
+- a **"Do this yourself — outside the app"** callout for anything that
+  genuinely needs a console or an interactive shell (Cortex Cloud onboarding,
+  SSM sessions into the VMs, RDP) — with the exact command pre-filled using
+  real values resolved from CloudFormation where possible (instance IDs,
+  cluster name, bucket name).
+
+```bash
+cd app
+npm install
+npm start
+```
+
+Then open http://localhost:4848. AWS credentials you paste into the
+credentials step are held only in the app's local server process for that
+session — never written to disk — and the server only binds to `127.0.0.1`.
+If you also use your own terminal for the manual steps (SSM sessions, RDP),
+export the same credentials there too.
 
 ## Configuration
 
